@@ -1,5 +1,5 @@
 import { LocalConfig } from '../../adapters/config/local-config/types';
-import { PdfSource } from '../source-model/types';
+import { PdfSource, PreparedPageImage } from '../source-model/types';
 /**
  * The input accepted by `bootstrapRun`.
  */
@@ -38,6 +38,14 @@ export interface RunContext {
     config: LocalConfig;
     /** ISO-8601 timestamp captured at bootstrap time. */
     started_at: string;
+    /**
+     * Rendered prepared page images — populated by `renderAllSources` (TASK-102)
+     * before any segmentation or localization step runs.
+     *
+     * Absent until rendering is complete; downstream steps must not run
+     * before this field is set (INV-1).
+     */
+    preparedPages?: PreparedPageImage[];
 }
 /** Error thrown when a RunRequest is structurally invalid. */
 export declare class RunBootstrapError extends Error {

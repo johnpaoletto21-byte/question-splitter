@@ -208,3 +208,236 @@ $ npm run test:bootstrap
 ---
 
 *Batch 1 closeout statement will be added at end of Batch 1 (after TASK-102 and TASK-103).*
+
+---
+
+## TASK-102 — PDF Rendering to Prepared Page Images + Orchestrator Handoff
+
+**Date:** 2026-04-08
+**Status: PASS**
+
+---
+
+### 1. Claims Proven
+
+| Claim | Invariant Supported | What was shown |
+|-------|--------------------|----|
+| PO-1 (complete for Batch 1) | INV-1 | `renderPdfSource` produces real PNG image files from PDF input, with `source_id`, `page_number` (1-based), `image_path`, `image_width`, `image_height` all populated and validated. `renderAllSources` in the orchestrator accumulates all pages before returning, enforcing the INV-1 gate (no downstream step can begin without a populated `preparedPages` list). |
+
+---
+
+### 2. Required Grep Evidence
+
+#### Grep 1 — pdf/page/image fields in renderer and source-model
+
+```
+$ rg -n "pdf|page_number|image_width|image_height|image_path" adapters/source-preparation/pdf-renderer core/source-model
+```
+
+Key matches (condensed):
+```
+adapters/source-preparation/pdf-renderer/renderer.ts:8:   *             image_path, image_width, image_height
+adapters/source-preparation/pdf-renderer/renderer.ts:18:const pdfjsLib = require('pdfjs-dist/legacy/build/pdf') ...
+adapters/source-preparation/pdf-renderer/renderer.ts:125:      page_number: pageNum,        // 1-based (DEC-004)
+adapters/source-preparation/pdf-renderer/renderer.ts:126:      image_path: imagePath,
+adapters/source-preparation/pdf-renderer/renderer.ts:127:      image_width: width,
+adapters/source-preparation/pdf-renderer/renderer.ts:128:      image_height: height,
+core/source-model/types.ts:44:  page_number: number;
+core/source-model/types.ts:47:  image_path: string;
+core/source-model/types.ts:50:  image_width: number;
+core/source-model/types.ts:53:  image_height: number;
+```
+
+**Result:** All five Boundary A contract fields are set in the renderer output mapping
+(renderer.ts:124-130) and their types are defined in core/source-model/types.ts.
+
+---
+
+#### Grep 2 — render in orchestrator and renderer
+
+```
+$ rg -n "render" core/run-orchestrator adapters/source-preparation/pdf-renderer
+```
+
+Key matches (condensed):
+```
+core/run-orchestrator/index.ts:2:export { renderAllSources } from './render-step';
+core/run-orchestrator/index.ts:5:export type { PageRenderer } from './render-step';
+core/run-orchestrator/render-step.ts:45:export async function renderAllSources(
+core/run-orchestrator/render-step.ts:47:  renderer: PageRenderer,
+core/run-orchestrator/render-step.ts:52:    const pages = await renderer(source, context.config.OUTPUT_DIR);
+adapters/source-preparation/pdf-renderer/renderer.ts:43:export async function renderPdfSource(
+adapters/source-preparation/pdf-renderer/renderer.ts:98:      await page.render({ canvasContext: ctx, viewport }).promise;
+adapters/source-preparation/pdf-renderer/index.ts:1:export { renderPdfSource } from './renderer';
+```
+
+**Result:** `renderPdfSource` (adapter) and `renderAllSources` + `PageRenderer` (orchestrator)
+are present and correctly connected via dependency injection.
+
+---
+
+#### Guard — no provider SDK in core
+
+```
+$ rg -n "googleapis|@google/genai|vertex|drive" core
+(no output)
+```
+
+**Result:** PASS. INV-9 boundary clean.
+
+---
+
+### 3. Required Validation Evidence
+
+#### typecheck
+
+```
+$ npm run typecheck
+> question-cropper-v1@1.0.0 typecheck
+> tsc --project tsconfig.json --noEmit
+
+(exit 0 — no errors)
+```
+
+#### build
+
+```
+$ npm run build
+> question-cropper-v1@1.0.0 build
+> tsc --project tsconfig.json
+
+(exit 0 — no errors)
+```
+
+#### tests — full suite
+
+```
+$ npm test
+> question-cropper-v1@1.0.0 test
+> jest
+
+PASS adapters/config/local-config/__tests__/loader.test.ts
+PASS core/run-orchestrator/__tests__/render-step.test.ts
+PASS core/source-model/__tests__/validation.test.ts
+PASS core/run-orchestrator/__tests__/bootstrap.test.ts
+PASS adapters/source-preparation/pdf-renderer/__tests__/renderer.test.ts
+
+Test Suites: 5 passed, 5 total
+Tests:       60 passed, 60 total
+Snapshots:   0 total
+Time:        2.539 s
+```
+
+#### targeted — PDF renderer integration test
+
+```
+$ npm run test:pdf-renderer
+> jest --testPathPattern='adapters/source-preparation/pdf-renderer'
+
+PASS adapters/source-preparation/pdf-renderer/__tests__/renderer.test.ts
+  renderPdfSource — integration
+    ✓ renders a 1-page PDF into exactly 1 PreparedPageImage (531 ms)
+    ✓ renders a 3-page PDF into exactly 3 PreparedPageImages (62 ms)
+    ✓ assigns 1-based page_number to each rendered page (63 ms)
+    ✓ records positive integer image_width and image_height for each page (43 ms)
+    ✓ reflects non-square page dimensions correctly (A4 vs Letter) (43 ms)
+    ✓ stamps every page with the source_id of the input PdfSource (42 ms)
+    ✓ creates PNG files on disk at the reported image_path (52 ms)
+    ✓ embeds source_id and page tag in the image file name (44 ms)
+    ✓ sets file_name and pdf_path for traceability (21 ms)
+    ✓ throws PdfRenderError when the PDF path does not exist
+    ✓ PdfRenderError carries code = PDF_RENDER_FAILED and source_id
+
+Tests: 11 passed, 11 total
+```
+
+#### targeted — render-step unit test
+
+```
+$ npm run test:render-step
+> jest --testPathPattern='core/run-orchestrator/__tests__/render-step'
+
+PASS core/run-orchestrator/__tests__/render-step.test.ts
+  renderAllSources
+    ✓ calls renderer once per source
+    ✓ calls renderer with source and OUTPUT_DIR from config
+    ✓ accumulates pages from all sources in call order
+    ✓ returns all original context fields plus preparedPages
+    ✓ does not mutate the input context object
+    ✓ processes sources in their input_order (index) order
+    ✓ throws PreparedPageValidationError when renderer returns empty list
+    ✓ re-throws renderer errors without additional wrapping
+
+Tests: 8 passed, 8 total
+```
+
+---
+
+### 4. Sample PDF Fixtures Used and Rendered Page Counts
+
+Test fixtures are created programmatically by `pdf-lib` in `beforeAll` of the renderer integration test.
+No static PDF files are committed.
+
+| Fixture PDF | Page size (pt) | Pages rendered | Rendered dimensions (px @ 1.5×) |
+|-------------|---------------|----------------|--------------------------------|
+| `one-page.pdf` | 612×792 (US Letter) | 1 | 918×1188 |
+| `three-page.pdf` | 612×792 (US Letter) | 3 | 918×1188 each |
+| `numbered.pdf` | 612×792 | 3 | 918×1188 each |
+| `dims.pdf` | 612×792 | 2 | 918×1188 each |
+| `letter.pdf` | 612×792 | 1 | 918×1188 |
+| `a4.pdf` | 595×842 (A4) | 1 | 892×1263 |
+| `linkage.pdf` | 612×792 | 2 | 918×1188 each |
+| `files.pdf` | 612×792 | 2 | 918×1188 each |
+| `naming.pdf` | 612×792 | 2 | 918×1188 each |
+| `trace.pdf` | 612×792 | 1 | 918×1188 |
+
+All PNG files confirmed to exist on disk during test runs.
+Render proof via direct Node.js invocation: US Letter → `918 x 1188`, PNG exists: `true`.
+
+---
+
+### 5. Change Surface
+
+#### Exact files changed
+
+| File | Change type | Purpose |
+|------|-------------|---------|
+| `adapters/source-preparation/pdf-renderer/types.ts` | NEW | `RenderRequest` type; `PdfRenderError` with `code = 'PDF_RENDER_FAILED'` |
+| `adapters/source-preparation/pdf-renderer/renderer.ts` | NEW | `renderPdfSource()` — pdfjs-dist + canvas rendering, PNG output, PreparedPageImage production |
+| `adapters/source-preparation/pdf-renderer/index.ts` | NEW | Public re-exports |
+| `adapters/source-preparation/pdf-renderer/__tests__/renderer.test.ts` | NEW | 11 integration tests using pdf-lib fixtures |
+| `core/run-orchestrator/types.ts` | MODIFIED | Added `preparedPages?: PreparedPageImage[]` to `RunContext`; added `PreparedPageImage` import |
+| `core/run-orchestrator/render-step.ts` | NEW | `PageRenderer` type; `renderAllSources()` — orchestrator handoff step with DI and validation gate |
+| `core/run-orchestrator/index.ts` | MODIFIED | Added `renderAllSources` and `PageRenderer` exports |
+| `core/run-orchestrator/__tests__/render-step.test.ts` | NEW | 8 unit tests for render-step orchestration logic |
+| `package.json` | MODIFIED | Added `canvas` + `pdfjs-dist` runtime deps; `pdf-lib` devDep; `test:pdf-renderer` + `test:render-step` scripts |
+| `docs/question-cropper-v1/DECISIONS.md` | MODIFIED | Added DEC-005 (library choice) and DEC-006 (render scale) |
+| `docs/question-cropper-v1/PROOF_LOG.md` | MODIFIED | This section |
+
+#### Key diff references
+
+- `adapters/source-preparation/pdf-renderer/renderer.ts:43-134` — the full `renderPdfSource` function: reads PDF, iterates pages 1-based, renders each to canvas, writes PNG, assembles PreparedPageImage with all five Boundary A fields. **Why it matters:** this is the Boundary A implementation; all five required fields must appear here for PO-1.
+- `adapters/source-preparation/pdf-renderer/renderer.ts:125-130` — PreparedPageImage construction with `page_number: pageNum` (1-based, DEC-004), `image_path`, `image_width`, `image_height`. **Why it matters:** these are the exact output fields downstream steps depend on.
+- `core/run-orchestrator/types.ts:50-57` — `preparedPages?: PreparedPageImage[]` added to `RunContext`. **Why it matters:** this is the orchestrator's handoff field; downstream code reads `context.preparedPages` instead of raw PDFs.
+- `core/run-orchestrator/render-step.ts:23-30` — `PageRenderer` type: `(source, outputDir) => Promise<PreparedPageImage[]>`. **Why it matters:** dependency injection interface that keeps core/ free of provider SDK imports (INV-9).
+- `core/run-orchestrator/render-step.ts:45-57` — `renderAllSources`: iterates sources, calls renderer, accumulates pages, calls `validatePreparedPageImages`. **Why it matters:** validation gate enforces INV-1 — all pages pass core validation before being attached to context; return is typed as `RunContext & { preparedPages: PreparedPageImage[] }` making the populated state explicit.
+
+---
+
+### 6. Result Statement
+
+**PASS — all TASK-102 deliverables are complete.**
+
+- 60/60 tests pass (19 new tests added: 11 integration + 8 unit)
+- `npm run typecheck` exits 0
+- `npm run build` exits 0
+- Guard grep (no provider SDK in core) returns empty
+- Real PDF rendering confirmed: US Letter 612×792 pt → 918×1188 px PNG
+- `renderAllSources` orchestrator handoff wires `PreparedPageImage[]` into `RunContext.preparedPages` via dependency injection
+- No mutation of input context (confirmed by test)
+
+**Decisions recorded:** DEC-005 (library: pdfjs-dist 3.x + canvas 3.x), DEC-006 (render scale 1.5×).
+
+**No deviations from Boundary Map.** No protected module touched.
+Provider SDK (`pdfjs-dist`, `canvas`) confined to `adapters/source-preparation/pdf-renderer/renderer.ts`.
+`core/run-orchestrator/render-step.ts` uses only `PageRenderer` type injection — zero adapter imports in core.

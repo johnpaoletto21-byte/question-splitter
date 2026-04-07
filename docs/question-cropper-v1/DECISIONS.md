@@ -42,6 +42,34 @@ perspective.
 
 ---
 
+## DEC-005 — PDF rendering library: pdfjs-dist 3.x (CJS legacy) + canvas 3.x
+
+**Task:** TASK-102
+**Decision:** Use `pdfjs-dist@3` (`legacy/build/pdf.js` CJS path) together with the `canvas`
+(node-canvas) package for rendering PDF pages to PNG in Node.js.
+pdfjs-dist 5.x dropped CommonJS support and the project uses `"module": "CommonJS"`.
+Downgrading to the last supported 3.x CJS build avoids the project-wide ESM migration
+that would be required by v5.
+`canvas` 3.x ships pre-built N-API binaries for macOS and ships cleanly without manual
+source compilation on a typical macOS developer machine with Xcode CLI tools.
+**Why recorded:** This is not the latest pdfjs-dist version, and `canvas` has native
+bindings — both are non-obvious choices that affect future maintenance.
+
+---
+
+## DEC-006 — PDF render scale is 1.5× (72 DPI base)
+
+**Task:** TASK-102
+**Decision:** `renderPdfSource` applies a scale factor of 1.5 to the native PDF viewport
+(72 DPI base → ~108 effective DPI).  A US Letter page (612×792 pt) renders to 918×1188 px.
+This is sufficient quality for downstream AI segmentation and localization while keeping
+per-page PNG file sizes small.  The scale constant is defined in a named constant
+`RENDER_SCALE` at the top of `renderer.ts` so it can be changed without searching code.
+**Why recorded:** Scale choice affects image_width/image_height values consumed by
+the crop engine's bbox-to-pixel conversion (TASK-302); the exact scale must be documented.
+
+---
+
 ## DEC-004 — PreparedPageImage page_number is 1-based
 
 **Task:** TASK-101
