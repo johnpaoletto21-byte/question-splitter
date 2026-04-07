@@ -137,3 +137,50 @@
 
 ### Unresolved / follow-up
 - TASK-201: Agent 1 segmentation adapter (Batch 2)
+
+---
+
+## Run: TASK-201 — Agent 1 Segmentation (2026-04-08)
+
+### Result: PASS
+
+### Files created
+- `core/segmentation-contract/types.ts`
+- `core/segmentation-contract/validation.ts`
+- `core/segmentation-contract/index.ts`
+- `core/segmentation-contract/__tests__/validation.test.ts` (28 tests)
+- `adapters/segmentation/gemini-segmenter/types.ts`
+- `adapters/segmentation/gemini-segmenter/schema.ts`
+- `adapters/segmentation/gemini-segmenter/prompt.ts`
+- `adapters/segmentation/gemini-segmenter/parser.ts`
+- `adapters/segmentation/gemini-segmenter/segmenter.ts`
+- `adapters/segmentation/gemini-segmenter/index.ts`
+- `adapters/segmentation/gemini-segmenter/__tests__/prompt.test.ts` (7 tests)
+- `adapters/segmentation/gemini-segmenter/__tests__/parser.test.ts` (11 tests)
+- `adapters/segmentation/gemini-segmenter/__tests__/segmenter.test.ts` (17 tests)
+- `core/run-orchestrator/segmentation-step.ts`
+- `core/run-orchestrator/__tests__/segmentation-step.test.ts` (6 tests)
+- `core/run-summary/types.ts`
+- `core/run-summary/summary.ts`
+- `core/run-summary/index.ts`
+- `core/run-summary/__tests__/summary.test.ts` (13 tests)
+
+### Files modified
+- `core/run-orchestrator/index.ts` — added runSegmentationStep + Segmenter exports
+
+### Validation
+- `npm run typecheck`: exit 0
+- `npm run build`: exit 0
+- `npm test`: 160/160 pass (82 new)
+- targeted: `npx jest --testPathPattern='segmentation|run-summary'`: 82/82 pass
+
+### Greps
+- `rg -n "bbox_1000" core/segmentation-contract adapters/segmentation`: matches only in test fixtures (rejection inputs) and validation guard; zero accepted field occurrences
+- `rg -n "review_comment" core/segmentation-contract adapters/segmentation core/run-summary`: present in agent output types and summary state only; absent from result-model
+- `rg -n "googleapis|@google/genai|vertex|drive" core`: NO MATCHES — boundary clean
+
+### Claims satisfied
+- PO-2 (INV-2): no bbox_1000 in segmentation contract — proven
+- PO-4 partial (INV-4): review_comment in agent output and summary, not in result-model — proven for TASK-201 scope
+- PO-8 partial (INV-9): zero provider SDK in core — proven
+

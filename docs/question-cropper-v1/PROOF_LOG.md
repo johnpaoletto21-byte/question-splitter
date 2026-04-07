@@ -644,3 +644,234 @@ Tests: 14 passed, 14 total
 **PO-8 partial:** boundary clean for all Batch 1 core modules; later batches will add more.
 
 I confirm this batch completed all assigned tasks, recorded all required proof, and did not cross the approved Boundary Map unless explicitly noted.
+
+## TASK-201 — Agent 1 Segmentation: Contract, Adapter, Orchestrator Step, Run-Summary
+
+**Date:** 2026-04-08
+**Status: PASS**
+
+---
+
+### 1. Claims Proven
+
+| Claim | Invariant Supported | What was shown |
+|-------|--------------------|----|
+| PO-2 | INV-2 | `core/segmentation-contract` defines no `bbox_1000` field. Validation actively rejects any region containing `bbox_1000`. Parser test confirms the contract output has no bbox field. Grep 1 shows `bbox_1000` appears only in test fixtures (as rejection input) and in the validation guard code — never as an accepted field. |
+| PO-4 (partial) | INV-4 | `review_comment` is typed as optional on `SegmentationTarget` and `RunSummaryTargetEntry`. Validation accepts it. Parser propagates it. Summary builds `agent1_status = 'needs_review'` when present. It does NOT appear in any result-model type (result-model is TASK-401+ scope). |
+| PO-8 (partial) | INV-9 | Grep 3 shows zero SDK imports (`googleapis`, `@google/genai`, `vertex`, `drive`) in `core/**`. Gemini REST endpoint and base64 encoding are adapter-only. `Segmenter` type in core is a plain function signature with no provider types. |
+
+---
+
+### 2. Required Grep Evidence
+
+#### Grep 1 — bbox_1000 not in contract or adapter source (INV-2 / PO-2)
+```
+$ rg -n "bbox_1000" core/segmentation-contract adapters/segmentation
+
+core/segmentation-contract/__tests__/validation.test.ts:53:  it('rejects region containing bbox_1000 (INV-2 / PO-2 guard)', () => {
+core/segmentation-contract/__tests__/validation.test.ts:55:      validateSegmentationRegion({ page_number: 1, bbox_1000: [0, 0, 500, 500] }, 0, 0),
+core/segmentation-contract/__tests__/validation.test.ts:163:  it('rejects a region inside target that contains bbox_1000 (INV-2)', () => {
+core/segmentation-contract/__tests__/validation.test.ts:288:  it('confirms no bbox_1000 field is present in any validated region (PO-2)', () => {
+core/segmentation-contract/__tests__/validation.test.ts:292:        expect('bbox_1000' in region).toBe(false);
+adapters/segmentation/gemini-segmenter/__tests__/parser.test.ts:105:  it('rejects a region with bbox_1000 (INV-2 / PO-2 guard)', () => {
+core/segmentation-contract/types.ts:8:   *   - INV-2: Agent 1 defines targets only (no bbox_1000 — that is Agent 2 scope).
+core/segmentation-contract/types.ts:18: * bbox_1000 is explicitly forbidden here (INV-2 / PO-2).
+core/segmentation-contract/validation.ts:61:  // Guard: bbox_1000 must never appear in segmentation regions (INV-2, PO-2).
+core/segmentation-contract/validation.ts:62:  if ('bbox_1000' in raw) {
+```
+
+**Interpretation:** `bbox_1000` appears only in:
+- Comments that document the prohibition (types.ts, validation.ts doc).
+- The validation guard that actively *rejects* it (validation.ts:62).
+- Test inputs that confirm rejection (test files).
+It does NOT appear as an accepted contract field anywhere.
+
+#### Grep 2 — review_comment in segmentation contract, adapter, and run-summary (INV-4)
+```
+$ rg -n "review_comment" core/segmentation-contract adapters/segmentation core/run-summary
+
+core/segmentation-contract/types.ts:39:  review_comment?: string;        ← typed as optional on SegmentationTarget
+core/segmentation-contract/validation.ts:153: rawComment = 'review_comment' in raw ? raw['review_comment'] : undefined;
+core/segmentation-contract/validation.ts:168: target.review_comment = rawComment;
+adapters/segmentation/gemini-segmenter/schema.ts:47: review_comment: { type: 'string', ... }
+adapters/segmentation/gemini-segmenter/parser.ts:88: if (typeof t.review_comment === 'string') { target['review_comment'] = t.review_comment; }
+core/run-summary/types.ts:44:  review_comment?: string;        ← visible in UI summary, NOT in result rows
+core/run-summary/summary.ts:33: agent1_status: t.review_comment !== undefined ? 'needs_review' : 'ok'
+core/run-summary/summary.ts:37: entry.review_comment = t.review_comment;
+```
+
+**Interpretation:** `review_comment` flows correctly: agent output → summary state. It is absent from `core/result-model` (not yet created; TASK-401 scope).
+
+#### Grep 3 — no provider SDK imports in core (INV-9 / PO-8)
+```
+$ rg -n "googleapis|@google/genai|vertex|drive" core
+
+(no matches)
+```
+
+**Result: CLEAN.** Zero provider SDK imports in any `core/**` file.
+
+---
+
+### 3. Validation Evidence
+
+#### typecheck
+```
+$ npm run typecheck
+> tsc --project tsconfig.json --noEmit
+(exit 0 — no output)
+```
+
+#### build
+```
+$ npm run build
+> tsc --project tsconfig.json
+(exit 0 — no output)
+```
+
+#### full test suite
+```
+$ npm test
+Test Suites: 12 passed, 12 total
+Tests:       160 passed, 160 total
+(78 pre-existing + 82 new)
+```
+
+#### targeted segmentation test command
+```
+$ npx jest --testPathPattern='segmentation|run-summary' --verbose
+
+Test Suites: 6 passed, 6 total
+Tests:       82 passed, 82 total
+
+Suites:
+  adapters/segmentation/gemini-segmenter/__tests__/segmenter.test.ts  — 17 tests
+  adapters/segmentation/gemini-segmenter/__tests__/parser.test.ts     — 11 tests
+  adapters/segmentation/gemini-segmenter/__tests__/prompt.test.ts     — 7 tests
+  core/segmentation-contract/__tests__/validation.test.ts             — 28 tests
+  core/run-orchestrator/__tests__/segmentation-step.test.ts           — 6 tests
+  core/run-summary/__tests__/summary.test.ts                          — 13 tests
+```
+
+---
+
+### 4. Change Surface
+
+**Exact files created (all new — no pre-existing file modified except orchestrator index):**
+
+| File | Lines | Role |
+|------|-------|------|
+| `core/segmentation-contract/types.ts` | 55 | Normalized contract types (SegmentationRegion, SegmentationTarget, SegmentationResult) |
+| `core/segmentation-contract/validation.ts` | 202 | Runtime validator enforcing INV-2, INV-3, INV-4 |
+| `core/segmentation-contract/index.ts` | 10 | Public exports |
+| `core/segmentation-contract/__tests__/validation.test.ts` | 315 | 28 unit tests |
+| `adapters/segmentation/gemini-segmenter/types.ts` | 55 | Adapter-internal types (GeminiRawTarget, HttpPostFn) |
+| `adapters/segmentation/gemini-segmenter/schema.ts` | 58 | Gemini structured output JSON schema |
+| `adapters/segmentation/gemini-segmenter/prompt.ts` | 61 | Prompt construction (profile-driven, snapshot hook) |
+| `adapters/segmentation/gemini-segmenter/parser.ts` | 98 | Raw response → normalized contract translator |
+| `adapters/segmentation/gemini-segmenter/segmenter.ts` | 140 | Main adapter function (fetch-based, injectable HttpPostFn) |
+| `adapters/segmentation/gemini-segmenter/index.ts` | 6 | Public exports |
+| `adapters/segmentation/gemini-segmenter/__tests__/prompt.test.ts` | 69 | 7 tests |
+| `adapters/segmentation/gemini-segmenter/__tests__/parser.test.ts` | 127 | 11 tests |
+| `adapters/segmentation/gemini-segmenter/__tests__/segmenter.test.ts` | 204 | 17 tests |
+| `core/run-orchestrator/segmentation-step.ts` | 62 | Segmenter type + runSegmentationStep() |
+| `core/run-orchestrator/__tests__/segmentation-step.test.ts` | 87 | 6 tests |
+| `core/run-summary/types.ts` | 52 | RunSummaryTargetEntry, RunSummaryState |
+| `core/run-summary/summary.ts` | 47 | buildRunSummaryFromSegmentation() |
+| `core/run-summary/index.ts` | 3 | Public exports |
+| `core/run-summary/__tests__/summary.test.ts` | 118 | 13 tests |
+
+**Modified:**
+| File | Change |
+|------|--------|
+| `core/run-orchestrator/index.ts` | Added `runSegmentationStep` and `Segmenter` exports (lines 3, 8) |
+
+---
+
+### 5. Key Diff References
+
+- `core/segmentation-contract/types.ts:14-43` — Normalized contract without bbox_1000; review_comment optional on SegmentationTarget. This is the boundary wall for INV-2.
+- `core/segmentation-contract/validation.ts:47-72` — validateSegmentationRegion: bbox_1000 guard at line 62 is the PO-2 enforcement point.
+- `core/segmentation-contract/validation.ts:95-170` — validateSegmentationTarget: INV-3 region count check at line 104-110; review_comment handling at lines 152-168.
+- `adapters/segmentation/gemini-segmenter/parser.ts:68-96` — makeTargetId() assigns sequential IDs (q_0001, q_0002, …). Provider raw target translated to normalized shape before validation runs.
+- `adapters/segmentation/gemini-segmenter/segmenter.ts:90-138` — segmentPages() main function: HttpPostFn injectable at line 94, Gemini REST URL construction at line 101-103. No provider SDK import anywhere in this file.
+- `core/run-orchestrator/segmentation-step.ts:30-42` — Segmenter type definition: plain function signature, zero provider types.
+- `core/run-orchestrator/segmentation-step.ts:62-66` — runSegmentationStep: passes through result unchanged, preserving reading order.
+- `core/run-summary/types.ts:19-44` — RunSummaryTargetEntry: review_comment present here (UI visible), absent from result-model (TASK-401+ scope, not yet created).
+- `core/run-summary/summary.ts:28-41` — buildRunSummaryFromSegmentation: maps review_comment → agent1_status flag + stored comment.
+
+---
+
+### 6. Concrete Example: Normalized Agent 1 Output
+
+Given a 3-page PDF with 2 questions (Q1 on page 1, Q2 spanning pages 2-3 with an uncertain boundary):
+
+**Gemini raw structured output:**
+```json
+{
+  "targets": [
+    { "target_type": "question", "regions": [{"page_number": 1}] },
+    { "target_type": "question", "regions": [{"page_number": 2}, {"page_number": 3}],
+      "review_comment": "Q2 continues from page 2 bottom to page 3 top — boundary uncertain" }
+  ]
+}
+```
+
+**Normalized SegmentationResult after parser:**
+```json
+{
+  "run_id": "run_2024-01-15_abc12345",
+  "targets": [
+    {
+      "target_id": "q_0001",
+      "target_type": "question",
+      "regions": [{ "page_number": 1 }]
+    },
+    {
+      "target_id": "q_0002",
+      "target_type": "question",
+      "regions": [{ "page_number": 2 }, { "page_number": 3 }],
+      "review_comment": "Q2 continues from page 2 bottom to page 3 top — boundary uncertain"
+    }
+  ]
+}
+```
+
+**RunSummaryState after buildRunSummaryFromSegmentation:**
+```json
+{
+  "run_id": "run_2024-01-15_abc12345",
+  "targets": [
+    { "target_id": "q_0001", "target_type": "question", "page_numbers": [1], "agent1_status": "ok" },
+    { "target_id": "q_0002", "target_type": "question", "page_numbers": [2, 3],
+      "agent1_status": "needs_review",
+      "review_comment": "Q2 continues from page 2 bottom to page 3 top — boundary uncertain" }
+  ]
+}
+```
+
+**What is NOT in either output:** `bbox_1000` (Agent 2 scope), `drive_url`, `output_file_name`, `status` (result-model scope, TASK-401+).
+
+---
+
+### 7. Result Statement
+
+**Status: PASS**
+
+- PO-2 proven: `bbox_1000` absent from all contract and adapter source; validation actively rejects it.
+- PO-4 (partial): `review_comment` flows through agent output and summary state; absent from result-model (not yet created; TASK-401 scope).
+- PO-8 (partial): Zero provider SDK imports in `core/**`; confirmed by grep.
+- 160/160 tests pass. typecheck and build exit 0.
+- Target order preserved from normalized result (no re-sorting in orchestrator).
+
+**Approved limitations:**
+- PO-4 is partial: the final result-model is TASK-401 scope; this task confirms `review_comment` is NOT pre-added there.
+- PO-8 is partial: more core modules will be added in later tasks and each batch will re-run the guard.
+- TASK-502 prompt snapshot wiring is a stub: `promptSnapshot` parameter exists and is passed through; actual prompt-store integration is TASK-502 scope.
+
+**Deviations from boundary map:** None.
+**Protected modules touched:** None.
+**Boundary Map violated:** No.
+
+---
+

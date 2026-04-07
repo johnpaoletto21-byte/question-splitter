@@ -2,32 +2,49 @@
   "version": 1,
   "files": [
     {
-      "filePath": "core/crop-target-profile",
-      "fileName": "profile.ts",
-      "lineRange": { "start": 1, "end": 63 }
+      "filePath": "docs/question-cropper-v1",
+      "fileName": "PROOF_LOG.md",
+      "lineRange": { "start": 647, "end": 880 }
     },
     {
-      "filePath": "core/crop-target-profile",
-      "fileName": "types.ts",
-      "lineRange": { "start": 1, "end": 53 }
+      "filePath": "core/segmentation-contract",
+      "fileName": "types.ts"
     },
     {
-      "filePath": "core/crop-target-profile",
-      "fileName": "index.ts"
+      "filePath": "core/segmentation-contract",
+      "fileName": "validation.ts",
+      "lineRange": { "start": 47, "end": 72 }
     },
     {
-      "filePath": "core/crop-target-profile/__tests__",
-      "fileName": "profile.test.ts"
+      "filePath": "core/segmentation-contract",
+      "fileName": "validation.ts",
+      "lineRange": { "start": 95, "end": 170 }
+    },
+    {
+      "filePath": "core/segmentation-contract/__tests__",
+      "fileName": "validation.test.ts"
+    },
+    {
+      "filePath": "adapters/segmentation/gemini-segmenter",
+      "fileName": "parser.ts",
+      "lineRange": { "start": 60, "end": 100 }
+    },
+    {
+      "filePath": "adapters/segmentation/gemini-segmenter",
+      "fileName": "segmenter.ts",
+      "lineRange": { "start": 90, "end": 140 }
+    },
+    {
+      "filePath": "adapters/segmentation/gemini-segmenter/__tests__",
+      "fileName": "parser.test.ts"
+    },
+    {
+      "filePath": "adapters/segmentation/gemini-segmenter/__tests__",
+      "fileName": "segmenter.test.ts"
     },
     {
       "filePath": "core/run-orchestrator",
-      "fileName": "types.ts",
-      "lineRange": { "start": 1, "end": 75 }
-    },
-    {
-      "filePath": "core/run-orchestrator",
-      "fileName": "bootstrap.ts",
-      "lineRange": { "start": 1, "end": 80 }
+      "fileName": "segmentation-step.ts"
     },
     {
       "filePath": "core/run-orchestrator",
@@ -35,27 +52,24 @@
     },
     {
       "filePath": "core/run-orchestrator/__tests__",
-      "fileName": "bootstrap.test.ts",
-      "lineRange": { "start": 44, "end": 75 }
+      "fileName": "segmentation-step.test.ts"
     },
     {
-      "filePath": "core/run-orchestrator/__tests__",
-      "fileName": "render-step.test.ts",
-      "lineRange": { "start": 15, "end": 42 }
+      "filePath": "core/run-summary",
+      "fileName": "types.ts"
+    },
+    {
+      "filePath": "core/run-summary",
+      "fileName": "summary.ts"
+    },
+    {
+      "filePath": "core/run-summary/__tests__",
+      "fileName": "summary.test.ts"
     },
     {
       "filePath": "ai-log/question_cropper_v1_1775585265501_1",
-      "fileName": "proof-log.md"
-    },
-    {
-      "filePath": "docs/question-cropper-v1",
-      "fileName": "PROOF_LOG.md",
-      "lineRange": { "start": 447, "end": 646 }
-    },
-    {
-      "filePath": ".",
-      "fileName": "package.json",
-      "lineRange": { "start": 6, "end": 16 }
+      "fileName": "proof-log.md",
+      "lineRange": { "start": 140, "end": 185 }
     }
   ]
 }
