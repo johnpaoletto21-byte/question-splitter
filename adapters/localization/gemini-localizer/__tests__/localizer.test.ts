@@ -1,0 +1,343 @@
+/**
+ * adapters/localization/gemini-localizer/__tests__/localizer.test.ts
+ *
+ * Unit tests for the Gemini localization adapter (localizeTarget).
+ *
+ * Proves:
+ *   - Correct Gemini API call shape (URL, request body, auth header).
+ *   - Page selection logic (only relevant pages sent per target).
+ *   - Response unwrapping and parsing pipeline.
+ *   - HTTP errors propagate cleanly.
+ *   - Malformed Gemini response structure is rejected.
+ *   - Invalid bbox in response is rejected.
+ *   - No provider SDK imports in core (boundary guarded by import structure).
+ */
+
+import {
+  localizeTarget,
+  buildGeminiLocalizationRequest,
+  unwrapGeminiLocalizationResponse,
+  selectPagesForTarget,
+} from '../localizer';
+import type { GeminiLocalizerConfig, HttpPostFn } from '../types';
+import type { SegmentationTarget } from '../../../../core/segmentation-contract/types';
+import type { PreparedPageImage } from '../../../../core/source-model/types';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const CONFIG: GeminiLocalizerConfig = { apiKey: 'test-key-abc', model: 'gemini-test' };
+
+function makeTarget(overrides: Partial<SegmentationTarget> = {}): SegmentationTarget {
+  return {
+    target_id: 'q_0001',
+    target_type: 'question',
+    regions: [{ page_number: 1 }],
+    ...overrides,
+  };
+}
+
+function makePage(pageNumber: number): PreparedPageImage {
+  return {
+    source_id: 'src_0001_test',
+    page_number: pageNumber,
+    image_path: `/tmp/page_${pageNumber}.png`,
+    image_width: 918,
+    image_height: 1188,
+  };
+}
+
+function makeGeminiEnvelope(jsonText: string): unknown {
+  return {
+    candidates: [
+      {
+        content: {
+          parts: [{ text: jsonText }],
+        },
+      },
+    ],
+  };
+}
+
+function makeValidLocalizationJson(pageNumber: number = 1): string {
+  return JSON.stringify({
+    regions: [{ page_number: pageNumber, bbox_1000: [100, 50, 800, 950] }],
+  });
+}
+
+// ---------------------------------------------------------------------------
+// selectPagesForTarget
+// ---------------------------------------------------------------------------
+
+describe('selectPagesForTarget', () => {
+  it('returns the page matching the target region', () => {
+    const target = makeTarget({ regions: [{ page_number: 2 }] });
+    const pages = [makePage(1), makePage(2), makePage(3)];
+    const selected = selectPagesForTarget(target, pages);
+    expect(selected).toHaveLength(1);
+    expect(selected[0].page_number).toBe(2);
+  });
+
+  it('returns pages in region order (not allPages order)', () => {
+    const target = makeTarget({ regions: [{ page_number: 3 }, { page_number: 1 }] });
+    const pages = [makePage(1), makePage(2), makePage(3)];
+    const selected = selectPagesForTarget(target, pages);
+    expect(selected).toHaveLength(2);
+    expect(selected[0].page_number).toBe(3);
+    expect(selected[1].page_number).toBe(1);
+  });
+
+  it('throws when a required page is not found', () => {
+    const target = makeTarget({ regions: [{ page_number: 99 }] });
+    const pages = [makePage(1), makePage(2)];
+    expect(() => selectPagesForTarget(target, pages)).toThrow(
+      expect.stringContaining('page_number 99'),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildGeminiLocalizationRequest
+// ---------------------------------------------------------------------------
+
+describe('buildGeminiLocalizationRequest', () => {
+  it('includes text prompt as first content part', () => {
+    const pages = [makePage(1)];
+    const encodeFn = () => 'base64data';
+    const body = buildGeminiLocalizationRequest('Test prompt', pages, encodeFn);
+    const contents = (body as Record<string, unknown>)['contents'] as unknown[];
+    const parts = (contents[0] as Record<string, unknown>)['parts'] as unknown[];
+    expect((parts[0] as Record<string, unknown>)['text']).toBe('Test prompt');
+  });
+
+  it('includes one inlineData part per page', () => {
+    const pages = [makePage(1), makePage(2)];
+    const encodeFn = (path: string) => `b64_${path}`;
+    const body = buildGeminiLocalizationRequest('Prompt', pages, encodeFn);
+    const contents = (body as Record<string, unknown>)['contents'] as unknown[];
+    const parts = (contents[0] as Record<string, unknown>)['parts'] as unknown[];
+    // text + 2 images = 3 parts
+    expect(parts).toHaveLength(3);
+    const imagePart = parts[1] as Record<string, unknown>;
+    expect((imagePart['inline_data'] as Record<string, unknown>)['mime_type']).toBe('image/png');
+  });
+
+  it('sets responseMimeType to application/json', () => {
+    const body = buildGeminiLocalizationRequest('Prompt', [makePage(1)], () => 'b64');
+    const genConfig = (body as Record<string, unknown>)['generationConfig'] as Record<string, unknown>;
+    expect(genConfig['responseMimeType']).toBe('application/json');
+  });
+
+  it('includes responseSchema in generationConfig', () => {
+    const body = buildGeminiLocalizationRequest('Prompt', [makePage(1)], () => 'b64');
+    const genConfig = (body as Record<string, unknown>)['generationConfig'] as Record<string, unknown>;
+    expect(genConfig['responseSchema']).toBeDefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// unwrapGeminiLocalizationResponse
+// ---------------------------------------------------------------------------
+
+describe('unwrapGeminiLocalizationResponse', () => {
+  it('parses valid JSON text from the response envelope', () => {
+    const payload = { regions: [{ page_number: 1, bbox_1000: [0, 0, 500, 1000] }] };
+    const envelope = makeGeminiEnvelope(JSON.stringify(payload));
+    const result = unwrapGeminiLocalizationResponse(envelope);
+    expect(result).toEqual(payload);
+  });
+
+  it('throws when candidates array is missing', () => {
+    expect(() => unwrapGeminiLocalizationResponse({ other: 'field' })).toThrow(
+      expect.stringContaining('candidates'),
+    );
+  });
+
+  it('throws when content.parts are missing', () => {
+    const bad = { candidates: [{ content: {} }] };
+    expect(() => unwrapGeminiLocalizationResponse(bad)).toThrow();
+  });
+
+  it('throws when first part is not a text string', () => {
+    const bad = { candidates: [{ content: { parts: [{ inline_data: {} }] } }] };
+    expect(() => unwrapGeminiLocalizationResponse(bad)).toThrow();
+  });
+
+  it('throws when text is not valid JSON', () => {
+    const bad = makeGeminiEnvelope('not json {{{');
+    expect(() => unwrapGeminiLocalizationResponse(bad)).toThrow(
+      expect.stringContaining('not valid JSON'),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// localizeTarget — full adapter call path
+// ---------------------------------------------------------------------------
+
+describe('localizeTarget', () => {
+  it('calls the API with the correct URL including model and key', async () => {
+    let capturedUrl = '';
+    const httpPost: HttpPostFn = async (url, _body, _headers) => {
+      capturedUrl = url;
+      return makeGeminiEnvelope(makeValidLocalizationJson(1));
+    };
+    await localizeTarget(
+      'run_test',
+      makeTarget(),
+      [makePage(1)],
+      {
+        target_type: 'question',
+        max_regions_per_target: 2,
+        composition_mode: 'top_to_bottom',
+      },
+      '',
+      CONFIG,
+      httpPost,
+      () => 'b64',
+    );
+    expect(capturedUrl).toContain('gemini-test');
+    expect(capturedUrl).toContain('test-key-abc');
+    expect(capturedUrl).toContain('generateContent');
+  });
+
+  it('returns a normalized LocalizationResult on success', async () => {
+    const httpPost: HttpPostFn = async () =>
+      makeGeminiEnvelope(makeValidLocalizationJson(1));
+    const result = await localizeTarget(
+      'run_001',
+      makeTarget(),
+      [makePage(1)],
+      {
+        target_type: 'question',
+        max_regions_per_target: 2,
+        composition_mode: 'top_to_bottom',
+      },
+      '',
+      CONFIG,
+      httpPost,
+      () => 'b64',
+    );
+    expect(result.run_id).toBe('run_001');
+    expect(result.target_id).toBe('q_0001');
+    expect(result.regions).toHaveLength(1);
+    expect(result.regions[0].bbox_1000).toEqual([100, 50, 800, 950]);
+  });
+
+  it('uses built-in prompt when promptSnapshot is empty', async () => {
+    let capturedBody: unknown;
+    const httpPost: HttpPostFn = async (_url, body) => {
+      capturedBody = body;
+      return makeGeminiEnvelope(makeValidLocalizationJson(1));
+    };
+    await localizeTarget(
+      'run_x',
+      makeTarget(),
+      [makePage(1)],
+      {
+        target_type: 'question',
+        max_regions_per_target: 2,
+        composition_mode: 'top_to_bottom',
+      },
+      '',
+      CONFIG,
+      httpPost,
+      () => 'b64',
+    );
+    const contents = ((capturedBody as Record<string, unknown>)['contents'] as unknown[]);
+    const parts = ((contents[0] as Record<string, unknown>)['parts'] as unknown[]);
+    const promptText = ((parts[0] as Record<string, unknown>)['text'] as string);
+    expect(promptText).toContain('Agent 2');
+    expect(promptText).toContain('q_0001');
+  });
+
+  it('propagates HTTP errors cleanly', async () => {
+    const httpPost: HttpPostFn = async () => {
+      throw new Error('Gemini API error: HTTP 500');
+    };
+    await expect(
+      localizeTarget(
+        'run_err',
+        makeTarget(),
+        [makePage(1)],
+        {
+          target_type: 'question',
+          max_regions_per_target: 2,
+          composition_mode: 'top_to_bottom',
+        },
+        '',
+        CONFIG,
+        httpPost,
+        () => 'b64',
+      ),
+    ).rejects.toThrow('HTTP 500');
+  });
+
+  it('rejects malformed Gemini response (no candidates)', async () => {
+    const httpPost: HttpPostFn = async () => ({ no_candidates: true });
+    await expect(
+      localizeTarget(
+        'run_bad',
+        makeTarget(),
+        [makePage(1)],
+        {
+          target_type: 'question',
+          max_regions_per_target: 2,
+          composition_mode: 'top_to_bottom',
+        },
+        '',
+        CONFIG,
+        httpPost,
+        () => 'b64',
+      ),
+    ).rejects.toThrow();
+  });
+
+  it('rejects invalid bbox in Gemini response', async () => {
+    // Return a bbox with inverted y
+    const badJson = JSON.stringify({
+      regions: [{ page_number: 1, bbox_1000: [900, 0, 100, 1000] }],
+    });
+    const httpPost: HttpPostFn = async () => makeGeminiEnvelope(badJson);
+    await expect(
+      localizeTarget(
+        'run_bad_bbox',
+        makeTarget(),
+        [makePage(1)],
+        {
+          target_type: 'question',
+          max_regions_per_target: 2,
+          composition_mode: 'top_to_bottom',
+        },
+        '',
+        CONFIG,
+        httpPost,
+        () => 'b64',
+      ),
+    ).rejects.toMatchObject({ code: 'LOCALIZATION_SCHEMA_INVALID' });
+  });
+
+  it('defaults model to gemini-2.0-flash when not specified', async () => {
+    let capturedUrl = '';
+    const httpPost: HttpPostFn = async (url) => {
+      capturedUrl = url;
+      return makeGeminiEnvelope(makeValidLocalizationJson(1));
+    };
+    await localizeTarget(
+      'run_default',
+      makeTarget(),
+      [makePage(1)],
+      {
+        target_type: 'question',
+        max_regions_per_target: 2,
+        composition_mode: 'top_to_bottom',
+      },
+      '',
+      { apiKey: 'key123' },
+      httpPost,
+      () => 'b64',
+    );
+    expect(capturedUrl).toContain('gemini-2.0-flash');
+  });
+});
