@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.bootstrapRun = bootstrapRun;
 const path_1 = __importDefault(require("path"));
+const profile_1 = require("../crop-target-profile/profile");
 const types_1 = require("./types");
 /**
  * Generate a stable, unique run ID.
@@ -67,6 +68,7 @@ function bootstrapRun(request) {
         run_label: runLabel,
         sources,
         config,
+        activeProfile: profile_1.V1_ACTIVE_PROFILE,
         started_at: new Date().toISOString(),
     };
 }

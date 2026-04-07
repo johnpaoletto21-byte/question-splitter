@@ -2,35 +2,32 @@
   "version": 1,
   "files": [
     {
-      "filePath": "adapters/source-preparation/pdf-renderer",
-      "fileName": "renderer.ts",
-      "lineRange": { "start": 43, "end": 134 }
+      "filePath": "core/crop-target-profile",
+      "fileName": "profile.ts",
+      "lineRange": { "start": 1, "end": 63 }
     },
     {
-      "filePath": "adapters/source-preparation/pdf-renderer",
-      "fileName": "renderer.ts",
-      "lineRange": { "start": 1, "end": 42 }
+      "filePath": "core/crop-target-profile",
+      "fileName": "types.ts",
+      "lineRange": { "start": 1, "end": 53 }
     },
     {
-      "filePath": "adapters/source-preparation/pdf-renderer",
-      "fileName": "types.ts"
-    },
-    {
-      "filePath": "adapters/source-preparation/pdf-renderer",
+      "filePath": "core/crop-target-profile",
       "fileName": "index.ts"
     },
     {
-      "filePath": "adapters/source-preparation/pdf-renderer/__tests__",
-      "fileName": "renderer.test.ts"
-    },
-    {
-      "filePath": "core/run-orchestrator",
-      "fileName": "render-step.ts"
+      "filePath": "core/crop-target-profile/__tests__",
+      "fileName": "profile.test.ts"
     },
     {
       "filePath": "core/run-orchestrator",
       "fileName": "types.ts",
-      "lineRange": { "start": 50, "end": 60 }
+      "lineRange": { "start": 1, "end": 75 }
+    },
+    {
+      "filePath": "core/run-orchestrator",
+      "fileName": "bootstrap.ts",
+      "lineRange": { "start": 1, "end": 80 }
     },
     {
       "filePath": "core/run-orchestrator",
@@ -38,21 +35,27 @@
     },
     {
       "filePath": "core/run-orchestrator/__tests__",
-      "fileName": "render-step.test.ts"
+      "fileName": "bootstrap.test.ts",
+      "lineRange": { "start": 44, "end": 75 }
+    },
+    {
+      "filePath": "core/run-orchestrator/__tests__",
+      "fileName": "render-step.test.ts",
+      "lineRange": { "start": 15, "end": 42 }
+    },
+    {
+      "filePath": "ai-log/question_cropper_v1_1775585265501_1",
+      "fileName": "proof-log.md"
     },
     {
       "filePath": "docs/question-cropper-v1",
       "fileName": "PROOF_LOG.md",
-      "lineRange": { "start": 213, "end": 430 }
-    },
-    {
-      "filePath": "docs/question-cropper-v1",
-      "fileName": "DECISIONS.md",
-      "lineRange": { "start": 1, "end": 55 }
+      "lineRange": { "start": 447, "end": 646 }
     },
     {
       "filePath": ".",
-      "fileName": "package.json"
+      "fileName": "package.json",
+      "lineRange": { "start": 6, "end": 16 }
     }
   ]
 }

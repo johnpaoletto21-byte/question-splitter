@@ -96,3 +96,44 @@
 
 ### Unresolved / follow-up
 - TASK-103: crop-target-profile scaffold (PO-3)
+
+---
+
+## Run: TASK-103 — Crop Target Profile Scaffold + Orchestrator Wiring (2026-04-08)
+
+### Result: PASS
+
+### Files touched (new or modified)
+- `core/crop-target-profile/types.ts` — NEW: CropTargetProfile interface, TargetType, CompositionMode, ProfileValidationError
+- `core/crop-target-profile/profile.ts` — NEW: V1_ACTIVE_PROFILE constant, validateCropTargetProfile()
+- `core/crop-target-profile/index.ts` — NEW: re-exports
+- `core/crop-target-profile/__tests__/profile.test.ts` — NEW: 14 unit tests
+- `core/run-orchestrator/types.ts` — MODIFIED: added CropTargetProfile import; added activeProfile: CropTargetProfile to RunContext
+- `core/run-orchestrator/bootstrap.ts` — MODIFIED: added V1_ACTIVE_PROFILE import; set activeProfile at run start
+- `core/run-orchestrator/index.ts` — MODIFIED: added CropTargetProfile/V1_ACTIVE_PROFILE/validateCropTargetProfile exports
+- `core/run-orchestrator/__tests__/bootstrap.test.ts` — MODIFIED: added V1_ACTIVE_PROFILE import + 4 profile attachment tests
+- `core/run-orchestrator/__tests__/render-step.test.ts` — MODIFIED: added activeProfile to RunContext fixture
+- `package.json` — MODIFIED: added test:profile script
+
+### Validation
+- `npm run typecheck` → exit 0, no errors
+- `npm run build`     → exit 0, no errors
+- `npm test`         → 78/78 tests pass (6 suites; 18 new tests)
+- `npm run test:profile` → 14/14 profile tests pass
+
+### Key diff references
+- `core/crop-target-profile/profile.ts:15-20` — V1_ACTIVE_PROFILE with all 3 policy values
+- `core/crop-target-profile/profile.ts:38-62` — validateCropTargetProfile enforcing INV-3 (max 2 regions) + INV-6
+- `core/run-orchestrator/types.ts:46-56` — activeProfile: CropTargetProfile added to RunContext
+- `core/run-orchestrator/bootstrap.ts:2,74` — V1_ACTIVE_PROFILE import + attachment at run start
+
+### Guard greps
+- `rg -n "target_type|max_regions_per_target|composition_mode|top_to_bottom" core` → all matches point to crop-target-profile only; no scattered hardcoding PASS
+- `rg -n "question" core/crop-target-profile core/run-orchestrator` → profile module + tests only PASS
+- `rg -n "googleapis|@google/genai|vertex|drive" core` → (no output) PASS
+
+### Claims
+- PO-3 (complete) — INV-3 + INV-6 satisfied
+
+### Unresolved / follow-up
+- TASK-201: Agent 1 segmentation adapter (Batch 2)

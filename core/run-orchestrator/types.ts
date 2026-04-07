@@ -1,4 +1,5 @@
 import { LocalConfig } from '../../adapters/config/local-config/types';
+import { CropTargetProfile } from '../crop-target-profile/types';
 import { PdfSource, PreparedPageImage } from '../source-model/types';
 
 /**
@@ -43,6 +44,14 @@ export interface RunContext {
 
   /** Resolved and validated config for the whole run. */
   config: LocalConfig;
+
+  /**
+   * Active crop target profile attached at run start.
+   * Centralizes target_type, max_regions_per_target, and composition_mode
+   * so downstream steps (segmentation guard, composer) read from one place.
+   * Satisfies PO-3 / INV-3 / INV-6.
+   */
+  activeProfile: CropTargetProfile;
 
   /** ISO-8601 timestamp captured at bootstrap time. */
   started_at: string;

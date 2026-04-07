@@ -1,4 +1,5 @@
 import path from 'path';
+import { V1_ACTIVE_PROFILE } from '../crop-target-profile/profile';
 import { PdfSource } from '../source-model/types';
 import { RunBootstrapError, RunContext, RunRequest } from './types';
 
@@ -73,6 +74,7 @@ export function bootstrapRun(request: RunRequest): RunContext {
     run_label: runLabel,
     sources,
     config,
+    activeProfile: V1_ACTIVE_PROFILE,
     started_at: new Date().toISOString(),
   };
 }

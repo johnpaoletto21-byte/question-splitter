@@ -11,7 +11,8 @@
     "test:source-model": "jest --testPathPattern='core/source-model'",
     "test:bootstrap": "jest --testPathPattern='core/run-orchestrator'",
     "test:pdf-renderer": "jest --testPathPattern='adapters/source-preparation/pdf-renderer'",
-    "test:render-step": "jest --testPathPattern='core/run-orchestrator/__tests__/render-step'"
+    "test:render-step": "jest --testPathPattern='core/run-orchestrator/__tests__/render-step'",
+    "test:profile": "jest --testPathPattern='core/crop-target-profile'"
   },
   "devDependencies": {
     "@types/jest": "^29.5.12",

@@ -14,6 +14,7 @@
 
 import { renderAllSources } from '../render-step';
 import type { RunContext } from '../types';
+import { V1_ACTIVE_PROFILE } from '../../crop-target-profile/profile';
 import type { PreparedPageImage } from '../../source-model/types';
 import { PreparedPageValidationError } from '../../source-model/types';
 
@@ -37,6 +38,7 @@ function makeContext(sourceCount: number): RunContext {
     run_id: 'run_test_0001',
     sources,
     config: MOCK_CONFIG,
+    activeProfile: V1_ACTIVE_PROFILE,
     started_at: '2026-01-01T00:00:00.000Z',
   };
 }

@@ -1,5 +1,6 @@
 import { bootstrapRun } from '../bootstrap';
 import { RunBootstrapError, RunRequest } from '../types';
+import { V1_ACTIVE_PROFILE } from '../../crop-target-profile/profile';
 import { LocalConfig } from '../../../adapters/config/local-config/types';
 
 const MOCK_CONFIG: LocalConfig = {
@@ -45,6 +46,26 @@ describe('bootstrapRun — run context creation', () => {
   it('run_label is undefined when not provided', () => {
     const ctx = bootstrapRun(makeRequest());
     expect(ctx.run_label).toBeUndefined();
+  });
+
+  it('attaches the V1 active profile at run start', () => {
+    const ctx = bootstrapRun(makeRequest());
+    expect(ctx.activeProfile).toBe(V1_ACTIVE_PROFILE);
+  });
+
+  it('activeProfile has target_type = "question"', () => {
+    const ctx = bootstrapRun(makeRequest());
+    expect(ctx.activeProfile.target_type).toBe('question');
+  });
+
+  it('activeProfile has max_regions_per_target = 2', () => {
+    const ctx = bootstrapRun(makeRequest());
+    expect(ctx.activeProfile.max_regions_per_target).toBe(2);
+  });
+
+  it('activeProfile has composition_mode = "top_to_bottom"', () => {
+    const ctx = bootstrapRun(makeRequest());
+    expect(ctx.activeProfile.composition_mode).toBe('top_to_bottom');
   });
 });
 

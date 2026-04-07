@@ -207,7 +207,7 @@ $ npm run test:bootstrap
 
 ---
 
-*Batch 1 closeout statement will be added at end of Batch 1 (after TASK-102 and TASK-103).*
+*Batch 1 closeout statement added below after TASK-103.*
 
 ---
 
@@ -441,3 +441,206 @@ Render proof via direct Node.js invocation: US Letter → `918 x 1188`, PNG exis
 **No deviations from Boundary Map.** No protected module touched.
 Provider SDK (`pdfjs-dist`, `canvas`) confined to `adapters/source-preparation/pdf-renderer/renderer.ts`.
 `core/run-orchestrator/render-step.ts` uses only `PageRenderer` type injection — zero adapter imports in core.
+
+---
+
+## TASK-103 — Crop Target Profile Scaffold + Orchestrator Wiring
+
+**Date:** 2026-04-08
+**Status: PASS**
+
+---
+
+### 1. Claims Proven
+
+| Claim | Invariant Supported | What was shown |
+|-------|--------------------|----|
+| PO-3 | INV-3 | `V1_ACTIVE_PROFILE.max_regions_per_target = 2` is the single centralized source; `validateCropTargetProfile` rejects values > 2. No other module hardcodes this limit. |
+| PO-3 | INV-6 | `V1_ACTIVE_PROFILE.composition_mode = 'top_to_bottom'` is the single centralized source; `validateCropTargetProfile` rejects all other modes. |
+
+---
+
+### 2. Required Grep Evidence
+
+#### Grep 1 — policy constants in core
+
+```
+$ rg -n "target_type|max_regions_per_target|composition_mode|top_to_bottom" core
+```
+
+Key matches (all point to crop-target-profile, not scattered elsewhere):
+```
+core/crop-target-profile/profile.ts:17:  target_type: 'question',
+core/crop-target-profile/profile.ts:18:  max_regions_per_target: 2,
+core/crop-target-profile/profile.ts:19:  composition_mode: 'top_to_bottom',
+core/crop-target-profile/profile.ts:26:const ALLOWED_COMPOSITION_MODES = new Set<string>(['top_to_bottom']);
+core/crop-target-profile/types.ts:18:export type CompositionMode = 'top_to_bottom';
+core/crop-target-profile/types.ts:30:  target_type: TargetType;
+core/crop-target-profile/types.ts:36:  max_regions_per_target: number;
+core/crop-target-profile/types.ts:39:  composition_mode: CompositionMode;
+core/run-orchestrator/types.ts:50:   Centralizes target_type, max_regions_per_target, and composition_mode
+core/run-orchestrator/__tests__/bootstrap.test.ts:58:    expect(ctx.activeProfile.target_type).toBe('question');
+core/run-orchestrator/__tests__/bootstrap.test.ts:63:    expect(ctx.activeProfile.max_regions_per_target).toBe(2);
+core/run-orchestrator/__tests__/bootstrap.test.ts:68:    expect(ctx.activeProfile.composition_mode).toBe('top_to_bottom');
+```
+
+**Result:** All three policy constants are defined exclusively in `core/crop-target-profile/profile.ts`. Consumed by the orchestrator via `RunContext.activeProfile`; not hardcoded elsewhere.
+
+---
+
+#### Grep 2 — "question" in crop-target-profile and run-orchestrator
+
+```
+$ rg -n "question" core/crop-target-profile core/run-orchestrator
+```
+
+Key matches:
+```
+core/crop-target-profile/profile.ts:17:  target_type: 'question',
+core/crop-target-profile/profile.ts:23:const ALLOWED_TARGET_TYPES = new Set<string>(['question']);
+core/crop-target-profile/types.ts:12:export type TargetType = 'question';
+core/run-orchestrator/__tests__/bootstrap.test.ts:56: activeProfile has target_type = "question"
+core/run-orchestrator/__tests__/bootstrap.test.ts:58:    expect(ctx.activeProfile.target_type).toBe('question');
+```
+
+**Result:** `'question'` appears only in the profile module and in tests that prove the profile is attached to `RunContext`. No scattered hardcoding.
+
+---
+
+#### Guard — no provider SDK in core
+
+```
+$ rg -n "googleapis|@google/genai|vertex|drive" core
+(no output)
+```
+
+**Result:** PASS. INV-9 boundary clean.
+
+---
+
+### 3. Required Validation Evidence
+
+#### typecheck
+
+```
+$ npm run typecheck
+> tsc --project tsconfig.json --noEmit
+(exit 0 — no errors)
+```
+
+#### build
+
+```
+$ npm run build
+> tsc --project tsconfig.json
+(exit 0 — no errors)
+```
+
+#### tests — full suite
+
+```
+$ npm test
+> jest
+
+PASS core/source-model/__tests__/validation.test.ts
+PASS core/crop-target-profile/__tests__/profile.test.ts
+PASS core/run-orchestrator/__tests__/bootstrap.test.ts
+PASS adapters/config/local-config/__tests__/loader.test.ts
+PASS core/run-orchestrator/__tests__/render-step.test.ts
+PASS adapters/source-preparation/pdf-renderer/__tests__/renderer.test.ts
+
+Test Suites: 6 passed, 6 total
+Tests:       78 passed, 78 total   (+18 net new tests vs. TASK-102 baseline of 60)
+Snapshots:   0 total
+Time:        2.436 s
+```
+
+#### targeted — profile defaults test
+
+```
+$ npm run test:profile
+> jest --testPathPattern='core/crop-target-profile'
+
+PASS core/crop-target-profile/__tests__/profile.test.ts
+  V1_ACTIVE_PROFILE — centralized V1 policy constants
+    ✓ target_type is "question"
+    ✓ max_regions_per_target is 2
+    ✓ composition_mode is "top_to_bottom"
+    ✓ profile object is stable (same reference each import)
+  validateCropTargetProfile — valid profiles
+    ✓ accepts the V1 active profile without throwing
+    ✓ accepts max_regions_per_target = 1 (single-region question)
+  validateCropTargetProfile — target_type violations
+    ✓ throws ProfileValidationError for an unknown target_type
+    ✓ error code is PROFILE_INVALID for unknown target_type
+  validateCropTargetProfile — max_regions_per_target violations (INV-3)
+    ✓ throws ProfileValidationError for max_regions_per_target = 3 (exceeds V1 limit)
+    ✓ throws ProfileValidationError for max_regions_per_target = 0
+    ✓ throws ProfileValidationError for non-integer max_regions_per_target
+    ✓ error message mentions INV-3 limit
+  validateCropTargetProfile — composition_mode violations (INV-6)
+    ✓ throws ProfileValidationError for an unknown composition_mode
+    ✓ error code is PROFILE_INVALID for unknown composition_mode
+
+Tests: 14 passed, 14 total
+```
+
+---
+
+### 4. Change Surface
+
+#### Exact files changed
+
+| File | Change type | Purpose |
+|------|-------------|---------|
+| `core/crop-target-profile/types.ts` | NEW | `CropTargetProfile` interface; `TargetType`, `CompositionMode` types; `ProfileValidationError` |
+| `core/crop-target-profile/profile.ts` | NEW | `V1_ACTIVE_PROFILE` constant; `validateCropTargetProfile()` |
+| `core/crop-target-profile/index.ts` | NEW | Public re-exports |
+| `core/crop-target-profile/__tests__/profile.test.ts` | NEW | 14 unit tests (defaults + validation) |
+| `core/run-orchestrator/types.ts` | MODIFIED | Added `CropTargetProfile` import; added `activeProfile: CropTargetProfile` field to `RunContext` |
+| `core/run-orchestrator/bootstrap.ts` | MODIFIED | Added `V1_ACTIVE_PROFILE` import; set `activeProfile: V1_ACTIVE_PROFILE` in returned `RunContext` |
+| `core/run-orchestrator/index.ts` | MODIFIED | Added `CropTargetProfile`, `V1_ACTIVE_PROFILE`, `validateCropTargetProfile` re-exports |
+| `core/run-orchestrator/__tests__/bootstrap.test.ts` | MODIFIED | Added `V1_ACTIVE_PROFILE` import; added 4 tests asserting profile attachment on `RunContext` |
+| `core/run-orchestrator/__tests__/render-step.test.ts` | MODIFIED | Added `V1_ACTIVE_PROFILE` import; added `activeProfile` to `RunContext` fixture (required by updated type) |
+| `package.json` | MODIFIED | Added `test:profile` script |
+| `docs/question-cropper-v1/PROOF_LOG.md` | MODIFIED | This section |
+| `ai-log/question_cropper_v1_1775585265501_1/proof-log.md` | MODIFIED | Machine log section appended |
+
+#### Key diff references
+
+- `core/crop-target-profile/profile.ts:15-20` — `V1_ACTIVE_PROFILE` constant with all three policy values (`target_type = 'question'`, `max_regions_per_target = 2`, `composition_mode = 'top_to_bottom'`). **Why it matters:** this is the single source of truth for V1 policy; all downstream modules must read from here, not hardcode their own values.
+- `core/crop-target-profile/profile.ts:38-62` — `validateCropTargetProfile`: rejects unknown target types, rejects `max_regions_per_target` outside [1, 2] (INV-3), rejects unknown composition modes (INV-6). **Why it matters:** structural guard that would catch any future profile mis-construction before it reaches the run.
+- `core/run-orchestrator/types.ts:46-56` — `activeProfile: CropTargetProfile` added to `RunContext`. **Why it matters:** profile is now part of the run contract; downstream steps (composer, segmentation guard) can read it from context without reaching back into the profile module.
+- `core/run-orchestrator/bootstrap.ts:2,74` — `V1_ACTIVE_PROFILE` import and `activeProfile: V1_ACTIVE_PROFILE` in the returned `RunContext`. **Why it matters:** profile attachment happens exactly once, at run start, before any rendering, agent call, or crop step. This is the wiring required by the task.
+
+---
+
+### 5. Result Statement
+
+**PASS — all TASK-103 deliverables are complete.**
+
+- 78/78 tests pass (14 new in profile suite, 4 new in bootstrap suite)
+- `npm run typecheck` exits 0
+- `npm run build` exits 0
+- `npm run test:profile` exits 0, 14/14 targeted profile tests pass
+- Guard grep (no provider SDK in core) returns empty
+- All three V1 policy constants centralized in `core/crop-target-profile/profile.ts`
+- Profile attached to `RunContext` at bootstrap time via `V1_ACTIVE_PROFILE`
+- No scattered hardcoding of policy values in any other module
+
+**No deviations from Boundary Map.** No protected module touched.
+3+ region support not added. Provider SDK not imported into core.
+
+---
+
+## Batch 1 Closeout
+
+**Tasks complete:** TASK-101 ✓, TASK-102 ✓, TASK-103 ✓
+
+**POs closed this batch:**
+- PO-1 (complete): INV-1 satisfied — render path creates PreparedPageImages before any downstream step
+- PO-3 (complete): INV-3 + INV-6 satisfied — V1 profile centralizes max 2 regions and top-to-bottom composition
+
+**PO-8 partial:** boundary clean for all Batch 1 core modules; later batches will add more.
+
+I confirm this batch completed all assigned tasks, recorded all required proof, and did not cross the approved Boundary Map unless explicitly noted.
