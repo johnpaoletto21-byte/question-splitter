@@ -1,0 +1,21 @@
+{
+  "name": "question-cropper-v1",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Single-user local pipeline: PDF → rendered pages → crop → Drive upload",
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "typecheck": "tsc --project tsconfig.json --noEmit",
+    "test": "jest",
+    "test:config": "jest --testPathPattern='adapters/config'",
+    "test:source-model": "jest --testPathPattern='core/source-model'",
+    "test:bootstrap": "jest --testPathPattern='core/run-orchestrator'"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "@types/node": "^20.14.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.5",
+    "typescript": "^5.4.5"
+  }
+}

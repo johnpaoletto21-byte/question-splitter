@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "files": [
+    {
+      "filePath": "adapters/config/local-config",
+      "fileName": "loader.ts",
+      "lineRange": { "start": 1, "end": 82 }
+    },
+    {
+      "filePath": "adapters/config/local-config",
+      "fileName": "types.ts",
+      "lineRange": { "start": 1, "end": 50 }
+    },
+    {
+      "filePath": "core/source-model",
+      "fileName": "types.ts",
+      "lineRange": { "start": 34, "end": 70 }
+    },
+    {
+      "filePath": "core/source-model",
+      "fileName": "validation.ts",
+      "lineRange": { "start": 1, "end": 50 }
+    },
+    {
+      "filePath": "core/run-orchestrator",
+      "fileName": "bootstrap.ts",
+      "lineRange": { "start": 1, "end": 71 }
+    },
+    {
+      "filePath": "core/run-orchestrator",
+      "fileName": "types.ts",
+      "lineRange": { "start": 1, "end": 55 }
+    },
+    {
+      "filePath": "adapters/config/local-config/__tests__",
+      "fileName": "loader.test.ts"
+    },
+    {
+      "filePath": "core/source-model/__tests__",
+      "fileName": "validation.test.ts"
+    },
+    {
+      "filePath": "core/run-orchestrator/__tests__",
+      "fileName": "bootstrap.test.ts"
+    },
+    {
+      "filePath": "docs/question-cropper-v1",
+      "fileName": "PROOF_LOG.md"
+    },
+    {
+      "filePath": "ai-log/question_cropper_v1_1775585265501_1",
+      "fileName": "proof-log.md"
+    }
+  ]
+}
