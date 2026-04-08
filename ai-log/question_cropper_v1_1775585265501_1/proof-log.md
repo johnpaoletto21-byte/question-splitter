@@ -986,3 +986,145 @@ All five selectors that failed in browser validation are now present in live HTT
 
 ### Unresolved
 None. All required selector markers confirmed in live response. Ready for browser validation pass.
+
+---
+
+## Run: TASK-503 — Batch 5 Closeout: INV-8 / PO-7 Integrated Partial-Failure Proof — 2026-04-08
+
+### Summary
+
+TASK-503 required grounded proof that one failing target does not stop later targets,
+and that the mixed result remains visible in summary/batch closeout evidence (INV-8 / PO-7).
+
+**Result: PASS**
+- Production code needed no changes — the continuation behavior was already implemented.
+- TASK-503 added one integration test that chains all four orchestrator stages into a single
+  deterministic scenario, proves continuation across those stages, and checks final summary
+  visibility for all targets.
+
+---
+
+### What was done
+
+**Code change:**
+- Added `core/run-orchestrator/__tests__/partial-failure-integration.test.ts` (new file — test-only)
+- No production code was modified.
+
+**Scenario:**
+- 3 targets: `q_0001`, `q_0002`, `q_0003`
+- **q_0001** has inverted bbox (`bbox_1000: [900, 100, 100, 800]` — y_min=900 > y_max=100) →
+  fails with `BBOX_INVALID` in `runCropStep`.
+- **q_0002** and **q_0003** have valid 1-region bboxes → succeed through all four stages.
+
+**Stages tested in sequence (in one test):**
+1. `runCropStep` — q_0001 BBOX_INVALID, q_0002+q_0003 succeed; cropExecutor called exactly 2 times
+2. `runCompositionStep` — q_0001 failed row forwarded, q_0002+q_0003 composed (1-region passthrough)
+3. `runUploadStep` — q_0001 failed row forwarded, q_0002+q_0003 uploaded; driveUploader called exactly 2 times
+4. `buildRunSummaryFromSegmentation` + `applyLocalizationToSummary` × 3 + `applyFinalResultsToSummary`
+   → all 3 targets visible, q_0001 final_status='failed' + failure_code='BBOX_INVALID',
+     q_0002 and q_0003 final_status='ok' + drive_url set
+
+**Continuation assertion:**
+- After the crop step, `cropResults` has length 3 with q_0001.status='failed' and
+  q_0002.status='ok' and q_0003.status='ok' — proving the loop continued.
+- After upload, `uploadRows` has length 3 with same pattern.
+- `summaryState.targets` has length 3 — no target was suppressed.
+
+---
+
+### Required greps
+
+**grep 1: continue/failed/status/summary in orchestrator + summary**
+```
+rg -n "continue|failed|status|summary" core/run-orchestrator core/run-summary
+```
+Key hits:
+- `core/run-orchestrator/composition-step.ts:66-76` — `status === 'failed'` → forward + `continue`
+- `core/run-orchestrator/crop-step.ts:130-137` — BBOX_INVALID caught per-target + `continue`
+- `core/run-orchestrator/upload-step.ts:70-74` — failed row → push + `continue`
+- `core/run-summary/summary.ts:113` — "INV-8 compliance: all rows are processed; one failed target does not hide others"
+- `core/run-summary/__tests__/summary-final.test.ts:149` — "mixed ok/failed row set (INV-8: partial failure visible)"
+
+**grep 2: Batch Closeout / PO-7 / INV-8 in docs**
+```
+rg -n "Batch Closeout|PO-7|INV-8" docs/question-cropper-v1
+```
+Confirmed: `docs/question-cropper-v1/PROOF_LOG.md:1105` and `1259` reference INV-8 / PO-7 for
+BBOX_INVALID per-target continuation in `runCropStep`.
+
+---
+
+### Validation results
+
+| Command | Result |
+|---------|--------|
+| `npm run typecheck` | PASS (clean, no errors) |
+| `npm run build` | PASS (clean, no errors) |
+| `npm test` | PASS — 409/409 tests, 29 test suites |
+| Targeted: `npx jest --testPathPattern='partial-failure-integration' --verbose` | PASS — 1/1 test |
+
+---
+
+### Files changed
+
+| File | Change type |
+|------|-------------|
+| `core/run-orchestrator/__tests__/partial-failure-integration.test.ts` | NEW — integration test |
+
+No production files were modified.
+
+---
+
+### Key diff references
+
+- `core/run-orchestrator/__tests__/partial-failure-integration.test.ts:1-220`
+  Full scenario: crop → composition → upload → summary across 3 targets with 1 early failure.
+  The critical continuation assertions are at:
+  - Lines 99-108: crop results prove q_0001 failed, q_0002+q_0003 ok (continued)
+  - Lines 116-131: composition rows — q_0001 forwarded, q_0002+q_0003 composed
+  - Lines 139-154: upload rows — q_0001 forwarded, q_0002+q_0003 uploaded
+  - Lines 158-178: summary state — all 3 visible with correct final_status
+
+---
+
+### What proves a later target continues after an earlier failure
+
+The test asserts `cropResults.length === 3` and `cropResults[1].status === 'ok'` and
+`cropResults[2].status === 'ok'` after `cropResults[0].status === 'failed'`.
+
+This is deterministic: if the crop loop had aborted after q_0001's BBOX_INVALID, the array
+would have length 1. Having length 3 with positions 1 and 2 as 'ok' is logically equivalent
+to proving continuation.
+
+The same continuation chain is then validated in composition, upload, and summary stages,
+proving INV-8 holds end-to-end from the first failing target through to final summary visibility.
+
+---
+
+### Guard 2 check (review_comment boundary)
+
+The test asserts `expect(row).not.toHaveProperty('review_comment')` for every upload row.
+`review_comment` does not appear in any FinalResultRow — confirmed for this scenario.
+
+---
+
+### Unresolved issues
+None. All validation passes. No drift.
+
+---
+
+## Batch 5 Closeout Statement
+
+**Tasks completed in Batch 5:**
+- TASK-501: Run Summary + UI Rendering (complete, browser-validated)
+- TASK-502: Prompt Editor UI route + fix (complete, browser-validated on `/prompt-edit`)
+- TASK-503: Integrated partial-failure proof for INV-8 / PO-7 (complete — test added, 409/409 pass)
+
+**Batch 5 invariants covered:**
+- INV-8 / PO-7: one failing target does not stop later targets; mixed result visible in summary ✓
+- INV-4: review_comment absent from FinalResultRow shapes ✓
+- INV-5: one row per target, same order ✓
+- INV-7: prompt snapshot captured at run start (TASK-501/502) ✓
+
+`I confirm this batch completed all assigned tasks, recorded all required proof, and did not cross the approved Boundary Map unless explicitly noted.`
+
