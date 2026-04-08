@@ -646,3 +646,79 @@ Port 3001 is occupied in this dev environment by the relay workspace Next.js ser
 - Actual browser click-through is a Reviewer action — no code change can close this gap.
 - Port collision is an environment constraint; reviewer may use PREVIEW_PORT=3002 or stop the competing server.
 - TASK-502/TASK-503 not touched — outside this scope.
+
+---
+
+## Run: TASK-501 — Browser Reachability Active Validation (2026-04-08)
+
+### Result: PASS — server live, route confirmed reachable
+
+### What this run did
+
+The reviewer browser received `ERR_CONNECTION_REFUSED` at `http://localhost:3002/summary-preview` because no server process was running. No code defect existed. This run started the existing compiled preview server on port 3002 and verified HTTP 200 with all expected selectors.
+
+### Code changes
+
+**None.** No files were modified. The compiled `dist/` artifact from the previous run was used directly.
+
+### Command used
+
+```sh
+PREVIEW_PORT=3002 node dist/adapters/ui/local-app/preview-server.js
+```
+
+Server PID: 33209 (started in background, left running for reviewer validation)
+
+### Route for reviewer browser
+
+```
+http://localhost:3002/summary-preview
+```
+
+### Validation
+
+```
+curl -s -o /dev/null -w "HTTP_STATUS=%{http_code}" http://localhost:3002/summary-preview
+→ HTTP_STATUS=200
+
+curl -s http://localhost:3002/summary-preview | grep -o 'data-testid="[^"]*"'
+→ data-testid="run-summary"
+→ data-testid="summary-row-q_preview_001"
+→ data-testid="summary-row-status-q_preview_001"
+→ data-testid="summary-row-drive-url-q_preview_001"
+→ data-testid="summary-row-review-comment-q_preview_001"
+→ data-testid="summary-row-agent2-review-comment-q_preview_001"
+→ data-testid="summary-row-failure-code-q_preview_001"
+→ data-testid="summary-row-failure-message-q_preview_001"
+→ data-testid="summary-row-q_preview_002"
+→ data-testid="summary-row-status-q_preview_002"
+→ data-testid="summary-row-drive-url-q_preview_002"
+→ data-testid="summary-row-review-comment-q_preview_002"
+→ data-testid="summary-row-agent2-review-comment-q_preview_002"
+→ data-testid="summary-row-failure-code-q_preview_002"
+→ data-testid="summary-row-failure-message-q_preview_002"
+```
+
+All 15 expected selectors present. Status 200.
+
+### Server state
+
+**Left running** on PID 33209, port 3002. Reviewer can open `http://localhost:3002/summary-preview` in a browser immediately.
+
+If the process was stopped between this run and reviewer validation, restart with:
+```sh
+cd /Users/johnpaoletto/relay-workspaces/initiative_1775585265501_1
+PREVIEW_PORT=3002 node dist/adapters/ui/local-app/preview-server.js
+```
+
+### Where the reviewer should look first
+
+1. `http://localhost:3002/summary-preview` — browser validation target (server is live now)
+2. `adapters/ui/local-app/preview-server.ts` lines 29–31 — PREVIEW_PORT env override (the only code change from the prior run)
+3. `adapters/ui/local-app/preview-fixture.ts` — deterministic mixed fixture (unchanged)
+4. `adapters/ui/local-app/summary-renderer.ts` — renderer (unchanged)
+
+### Unresolved
+
+- TASK-502/TASK-503 not touched — outside this scope.
+- Server is a foreground Node process; it will stop if the shell session ends. Reviewer must validate while it is live or restart using the command above.

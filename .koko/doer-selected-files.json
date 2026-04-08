@@ -2,6 +2,11 @@
   "version": 1,
   "files": [
     {
+      "filePath": "ai-log/question_cropper_v1_1775585265501_1",
+      "fileName": "proof-log.md",
+      "lineRange": { "start": 649, "end": 720 }
+    },
+    {
       "filePath": "adapters/ui/local-app",
       "fileName": "preview-server.ts",
       "lineRange": { "start": 29, "end": 31 }
@@ -13,19 +18,6 @@
     {
       "filePath": "adapters/ui/local-app",
       "fileName": "summary-renderer.ts"
-    },
-    {
-      "filePath": "adapters/ui/local-app/__tests__",
-      "fileName": "summary-renderer.test.ts"
-    },
-    {
-      "filePath": "adapters/ui/local-app/__tests__",
-      "fileName": "preview-fixture.test.ts"
-    },
-    {
-      "filePath": "ai-log/question_cropper_v1_1775585265501_1",
-      "fileName": "proof-log.md",
-      "lineRange": { "start": 537, "end": 648 }
     }
   ]
 }
