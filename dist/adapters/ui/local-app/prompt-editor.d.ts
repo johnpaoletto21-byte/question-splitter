@@ -17,8 +17,8 @@
  *   - Save button:           data-testid="prompt-editor-save"
  *
  * Reachable route (via preview server):
- *   GET  http://localhost:3001/prompt-edit  — renders the editor with current prompts
- *   POST http://localhost:3001/prompt-edit  — applies edits, redirects back to GET
+ *   GET  http://localhost:3002/prompt-edit  — renders the editor with current prompts
+ *   POST http://localhost:3002/prompt-edit  — applies edits, redirects back to GET
  *
  * TASK-502 adds this module.
  */

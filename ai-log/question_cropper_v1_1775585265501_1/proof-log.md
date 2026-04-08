@@ -863,3 +863,79 @@ PREVIEW_PORT=3099 npm run preview
 - No integration test against real Gemini API (unchanged from prior tasks; expected for V1 scope).
 - TASK-503 (end-to-end continuation proof) not touched — outside this scope.
 
+
+---
+
+## Run: TASK-502 follow-up — Live route reachability fix (port collision)
+
+**Date:** 2026-04-08  
+**Mode:** Execution  
+**Scope:** Fix the 404 that the reviewer hit when navigating to `http://localhost:3001/prompt-edit`.
+
+### Root cause of prior 404
+
+Port 3001 is permanently occupied by the **KoKo Relay Next.js web app** (`/Users/johnpaoletto/Projects/KoKo Relay/web`, process: `next-server v14.2.35`, PID 37603 at time of investigation). The preview server (built by this initiative) defaults to port 3001 and therefore cannot bind. The reviewer's browser hit the Relay app, which has no `/prompt-edit` route, and returned its own styled Next.js "This page could not be found" 404 — not the preview server's plain-text 404. The preview server was never actually running.
+
+TASK-501 added `PREVIEW_PORT` env var support for port collision, but the **default** was never changed away from 3001.
+
+### Fix implemented
+
+Changed the default `PREVIEW_PORT` from **3001 → 3002** in all source locations:
+
+| File | Change |
+|------|--------|
+| `adapters/ui/local-app/preview-server.ts:38` | `3001` → `3002` (fallback literal in `parseInt` ternary) |
+| `adapters/ui/local-app/preview-server.ts:16-17` | comment URLs updated to `localhost:3002` |
+| `adapters/ui/local-app/prompt-editor.ts:20-21` | comment URLs updated to `localhost:3002` |
+
+Port 3002 is free on the reviewer machine (confirmed: `lsof -iTCP:3002` returned no listeners at investigation time).
+
+No test files reference port numbers — test suite was unaffected.
+
+### Key diff references
+
+- `adapters/ui/local-app/preview-server.ts:38` — `PREVIEW_PORT` default literal changed `3001` → `3002`
+- `adapters/ui/local-app/preview-server.ts:16-17` — startup comment URLs
+- `adapters/ui/local-app/prompt-editor.ts:20-21` — route comment URLs
+
+### Validation
+
+```
+npm run typecheck  → PASS (0 errors)
+npm run build      → PASS (compiled to dist/)
+npm run test:prompt-editor → PASS 17/17
+npm test           → PASS 408/408 (28 suites)
+```
+
+Compiled `dist/adapters/ui/local-app/preview-server.js` confirmed to contain `3002` (grep verified).
+
+### Startup command for reviewer
+
+```sh
+npm run preview
+```
+
+This compiles TypeScript and starts the server. No environment variable override required.
+
+### Exact URL for browser validation
+
+```
+http://localhost:3002/prompt-edit
+```
+
+Secondary route also available:
+```
+http://localhost:3002/summary-preview
+```
+
+### TASK-502 requirements preserved
+
+- Session-only state: unchanged — in-memory store reset on server restart
+- Immutable run-start snapshot: unchanged — frozen object in `core/prompt-config-store/store.ts`
+- No mid-run drift: unchanged — orchestrator captures snapshot at `bootstrapRun` time
+- POST-Redirect-GET: unchanged — POST `/prompt-edit` → 302 → GET `/prompt-edit`
+- No persistence: unchanged — no disk writes, no DB
+- No provider SDK imports in `core/**`: Guard 1 grep clean (unchanged)
+
+### Unresolved
+None. The fix is a single default value change. All existing TASK-502 behavior is intact.

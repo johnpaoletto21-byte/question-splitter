@@ -14,8 +14,8 @@
  *   npm run preview
  *
  * Then open in a browser:
- *   http://localhost:3001/summary-preview   — run summary UI
- *   http://localhost:3001/prompt-edit       — prompt editor UI
+ *   http://localhost:3002/summary-preview   — run summary UI
+ *   http://localhost:3002/prompt-edit       — prompt editor UI
  *
  * Boundary: uses only Node built-in http module and existing local-app/core modules.
  * No new runtime dependencies added.
@@ -66,7 +66,7 @@ const prompt_editor_1 = require("./prompt-editor");
 const store_1 = require("../../../core/prompt-config-store/store");
 const PREVIEW_PORT = process.env['PREVIEW_PORT']
     ? parseInt(process.env['PREVIEW_PORT'], 10)
-    : 3001;
+    : 3002;
 exports.PREVIEW_PORT = PREVIEW_PORT;
 const PREVIEW_PATH = '/summary-preview';
 exports.PREVIEW_PATH = PREVIEW_PATH;

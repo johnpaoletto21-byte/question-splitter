@@ -13,8 +13,8 @@
  *   npm run preview
  *
  * Then open in a browser:
- *   http://localhost:3001/summary-preview   — run summary UI
- *   http://localhost:3001/prompt-edit       — prompt editor UI
+ *   http://localhost:3002/summary-preview   — run summary UI
+ *   http://localhost:3002/prompt-edit       — prompt editor UI
  *
  * Boundary: uses only Node built-in http module and existing local-app/core modules.
  * No new runtime dependencies added.
