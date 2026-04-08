@@ -8,10 +8,12 @@
  *   2. Upload the composed output image to the configured Drive folder
  *      using the Drive Files API v3 multipart upload.
  *   3. Retry once on transient failure (Layer B §5.2 UPLOAD_FAILED policy).
- *   4. Return a normalized DriveUploadResult — no googleapis SDK types escape.
+ *   4. Set "anyone with the link can view" sharing permission on the uploaded
+ *      file (FR-UF6-2 / Layer B Boundary H — permission handling).
+ *   5. Return a normalized DriveUploadResult — no googleapis SDK types escape.
  *
- * The DriveHttpUploadFn is injectable so tests can mock the HTTP call
- * without making real network requests (same pattern as gemini-segmenter).
+ * Both DriveHttpUploadFn and DriveHttpPermissionFn are injectable so tests
+ * can mock HTTP calls without making real network requests.
  *
  * TASK-402 adds this module.
  */
@@ -22,7 +24,7 @@ import type { DriveUploadResult } from './types';
 import { DriveUploadError } from './types';
 
 // ---------------------------------------------------------------------------
-// Injectable HTTP upload function
+// Injectable HTTP functions
 // ---------------------------------------------------------------------------
 
 /**
@@ -41,6 +43,19 @@ export type DriveHttpUploadFn = (
   folderId: string,
   fileBuffer: Buffer,
 ) => Promise<{ id: string; webViewLink: string }>;
+
+/**
+ * Contract for the HTTP call that sets "anyone with the link can view"
+ * sharing permission on a newly uploaded Drive file (FR-UF6-2 / Layer B Boundary H).
+ * Injectable for testing; the default implementation uses native fetch.
+ *
+ * @param accessToken  OAuth2 bearer token.
+ * @param fileId       Drive file ID returned by the upload step.
+ */
+export type DriveHttpPermissionFn = (
+  accessToken: string,
+  fileId: string,
+) => Promise<void>;
 
 /**
  * Default implementation: calls Drive Files API v3 with a multipart body
@@ -104,6 +119,33 @@ const defaultDriveHttpUpload: DriveHttpUploadFn = async (
   return { id: data.id, webViewLink: data.webViewLink };
 };
 
+/**
+ * Default implementation: calls Drive Permissions API v3 to grant
+ * "anyone with the link" read access (FR-UF6-2 / Layer B Boundary H).
+ * Uses native fetch (Node 18+).
+ */
+const defaultDriveHttpPermission: DriveHttpPermissionFn = async (
+  accessToken,
+  fileId,
+) => {
+  const response = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}/permissions`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ role: 'reader', type: 'anyone' }),
+    },
+  );
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '(no body)');
+    throw new Error(`Drive Permissions API error: HTTP ${response.status} — ${text}`);
+  }
+};
+
 // ---------------------------------------------------------------------------
 // Token reader
 // ---------------------------------------------------------------------------
@@ -152,19 +194,26 @@ function readAccessToken(oauthTokenPath: string, targetId: string, filePath: str
 // ---------------------------------------------------------------------------
 
 /**
- * Uploads a composed output file to the configured Google Drive folder.
+ * Uploads a composed output file to the configured Google Drive folder and
+ * sets "anyone with the link can view" sharing permission (FR-UF6-2 / Layer B
+ * Boundary H).
  *
- * Retry policy: attempts the upload twice; if both fail, throws DriveUploadError
- * (Layer B §5.2 UPLOAD_FAILED — "retry once; if still failing, preserve local
- * output path and continue other uploads").
+ * Retry policy: the file upload is attempted twice; if both fail, throws
+ * DriveUploadError (Layer B §5.2 UPLOAD_FAILED — "retry once; if still
+ * failing, preserve local output path and continue other uploads").
  *
- * @param filePath        Absolute path to the local composed image file.
- * @param targetId        Target identifier (for error traceability).
- * @param folderId        Google Drive folder ID from local config.
- * @param oauthTokenPath  Path to the cached OAuth2 token file (OAUTH_TOKEN_PATH).
- * @param httpUpload      Injected HTTP upload function (default: native fetch).
- * @returns               Normalized DriveUploadResult with drive_file_id and drive_url.
- * @throws                DriveUploadError after two failed upload attempts.
+ * Permission step: runs once after a successful upload with no retry.
+ * A permission failure is treated as adapter failure and throws DriveUploadError.
+ *
+ * @param filePath          Absolute path to the local composed image file.
+ * @param targetId          Target identifier (for error traceability).
+ * @param folderId          Google Drive folder ID from local config.
+ * @param oauthTokenPath    Path to the cached OAuth2 token file (OAUTH_TOKEN_PATH).
+ * @param httpUpload        Injected HTTP upload function (default: native fetch).
+ * @param httpPermission    Injected HTTP permission function (default: native fetch).
+ * @returns                 Normalized DriveUploadResult with drive_file_id and drive_url.
+ * @throws                  DriveUploadError after two failed upload attempts or on
+ *                          permission-setting failure.
  */
 export async function uploadToDrive(
   filePath: string,
@@ -172,21 +221,36 @@ export async function uploadToDrive(
   folderId: string,
   oauthTokenPath: string,
   httpUpload: DriveHttpUploadFn = defaultDriveHttpUpload,
+  httpPermission: DriveHttpPermissionFn = defaultDriveHttpPermission,
 ): Promise<DriveUploadResult> {
   const accessToken = readAccessToken(oauthTokenPath, targetId, filePath);
   const fileName = path.basename(filePath);
   const fileBuffer = readFileSync(filePath);
 
+  // --- Upload with retry (two attempts total) ---
   let lastErr: unknown;
+  let uploadResult: { id: string; webViewLink: string } | undefined;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const result = await httpUpload(accessToken, fileName, folderId, fileBuffer);
-      return { drive_file_id: result.id, drive_url: result.webViewLink };
+      uploadResult = await httpUpload(accessToken, fileName, folderId, fileBuffer);
+      break;
     } catch (err) {
       lastErr = err;
     }
   }
 
-  const message = lastErr instanceof Error ? lastErr.message : String(lastErr);
-  throw new DriveUploadError(targetId, filePath, message);
+  if (!uploadResult) {
+    const message = lastErr instanceof Error ? lastErr.message : String(lastErr);
+    throw new DriveUploadError(targetId, filePath, message);
+  }
+
+  // --- Permission step: set link-accessible sharing (FR-UF6-2) ---
+  try {
+    await httpPermission(accessToken, uploadResult.id);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new DriveUploadError(targetId, filePath, `permission step failed: ${message}`);
+  }
+
+  return { drive_file_id: uploadResult.id, drive_url: uploadResult.webViewLink };
 }

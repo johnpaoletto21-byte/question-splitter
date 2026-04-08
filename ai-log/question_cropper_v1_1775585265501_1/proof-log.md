@@ -336,3 +336,49 @@ TASK-402 had zero prior implementation. `adapters/upload/google-drive/**` did no
 ### Unresolved / follow-up
 - Prompt-config-store (TASK-502) and local UI (TASK-503) not touched — outside TASK-402 scope.
 - The default DriveHttpUploadFn uses `fetch` with a manually composed multipart body. No integration test against a real Drive API is included — this is expected for V1 local-pipeline scope; a smoke test with real credentials is a future step.
+
+---
+
+## Run: TASK-402 audit-and-close pass — Permission step (2026-04-08)
+
+### Audit Finding
+
+**(a) Permission-setting state in repo reality:** MISSING before this run.
+`adapters/upload/google-drive/uploader.ts` uploaded files and returned `webViewLink` but never called the Drive Permissions API. The file was not made link-accessible.
+
+**(b) Gap closed by this run:** Added `DriveHttpPermissionFn` + `defaultDriveHttpPermission` (calls `POST /drive/v3/files/{id}/permissions` with `{role:'reader',type:'anyone'}`). `uploadToDrive` now calls the permission step after a successful upload. A permission failure throws `DriveUploadError` → `runUploadStep` catches and converts to `UPLOAD_FAILED` (existing behavior, unchanged).
+
+### Result: PASS
+
+### Files touched
+- `adapters/upload/google-drive/uploader.ts` — MODIFIED: added `DriveHttpPermissionFn` type, `defaultDriveHttpPermission` impl, 6th param on `uploadToDrive`, separated upload-retry loop from permission step
+- `adapters/upload/google-drive/index.ts` — MODIFIED: added `DriveHttpPermissionFn` to exports
+- `adapters/upload/google-drive/__tests__/uploader.test.ts` — MODIFIED: updated all upload tests to inject permission fn, added 5 new permission tests (14 total, was 9)
+- `ai-log/question_cropper_v1_1775585265501_1/proof-log.md` — this section appended
+
+### Validation
+- `npm run typecheck` → exit 0, no errors
+- `npm test` → 317/317 tests pass (23 suites)
+- Targeted: `npx jest --testPathPattern='google-drive'` → 14/14 pass
+
+### Key diff references
+- `adapters/upload/google-drive/uploader.ts:38-56` — `DriveHttpPermissionFn` type + `defaultDriveHttpPermission` calling `POST /drive/v3/files/{id}/permissions` with `{role:'reader',type:'anyone'}`
+- `adapters/upload/google-drive/uploader.ts:162-175` — updated `uploadToDrive` signature (6th param `httpPermission`)
+- `adapters/upload/google-drive/uploader.ts:185-210` — upload retry loop (upload-only; exits on first success)
+- `adapters/upload/google-drive/uploader.ts:212-220` — permission step: runs after upload success; permission failure → `DriveUploadError`
+- `adapters/upload/google-drive/__tests__/uploader.test.ts:207-263` — 5 new `uploadToDrive — permission step` tests
+
+### Guard greps
+- `rg -n "googleapis|@google/genai|vertex|drive" core` → "drive" appears as normalized field names (`drive_file_id`, `drive_url`) and in comments only — zero SDK imports. PASS (INV-9 intact)
+- `rg -n "review_comment|needs_review" core/result-model core/run-orchestrator/upload-step.ts adapters/upload` → `review_comment` appears only in defensive comments/assertions confirming absence. PASS (INV-4 intact)
+
+### Invariants confirmed
+- FR-UF6-2 / Layer B Boundary H: permission step now runs after every successful upload
+- Permission failure → `DriveUploadError` → `runUploadStep` → `UPLOAD_FAILED` (existing INV-8 path)
+- INV-5 (one row per target, same order): unchanged, owned by `runUploadStep`
+- INV-4 (no `review_comment` in final rows): unchanged, confirmed by grep
+- INV-9 (no provider SDK in `core/**`): unchanged, confirmed by grep
+
+### Unresolved / follow-up
+- Same as prior run: no integration test against real Drive API (expected for V1 scope).
+- `upload-step.test.ts` already proves permission-failure → UPLOAD_FAILED via the existing `makeFailingUploader` path; no change to that file needed.
