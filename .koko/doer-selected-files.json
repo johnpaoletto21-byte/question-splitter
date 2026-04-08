@@ -2,27 +2,13 @@
   "version": 1,
   "files": [
     {
-      "filePath": "adapters/ui/local-app",
-      "fileName": "preview-server.ts",
-      "lineRange": { "start": 36, "end": 40 }
-    },
-    {
-      "filePath": "adapters/ui/local-app",
-      "fileName": "preview-server.ts",
-      "lineRange": { "start": 14, "end": 19 }
-    },
-    {
-      "filePath": "adapters/ui/local-app",
-      "fileName": "prompt-editor.ts",
-      "lineRange": { "start": 19, "end": 23 }
-    },
-    {
-      "filePath": "adapters/ui/local-app/__tests__",
-      "fileName": "prompt-editor.test.ts"
-    },
-    {
       "filePath": "ai-log/question_cropper_v1_1775585265501_1",
       "fileName": "proof-log.md"
+    },
+    {
+      "filePath": "dist/adapters/ui/local-app",
+      "fileName": "preview-server.js",
+      "lineRange": { "start": 87, "end": 148 }
     }
   ]
 }

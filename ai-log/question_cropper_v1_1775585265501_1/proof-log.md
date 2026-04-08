@@ -939,3 +939,50 @@ http://localhost:3002/summary-preview
 
 ### Unresolved
 None. The fix is a single default value change. All existing TASK-502 behavior is intact.
+
+---
+
+## Run: TASK-502 Reachability Fix — 2026-04-08
+
+### Summary
+Stale process. The preview server process (PID 33209) was launched at **10:20:40** from the dist that predated the TASK-502 implementation build. The dist was rebuilt at **11:28**, but the old in-memory process continued serving the pre-502 code (which had no `/prompt-edit` route), producing 404s. No code change was needed.
+
+### Root Cause Evidence
+- `lsof -iTCP:3002 -sTCP:LISTEN` → PID 33209, command: `node dist/adapters/ui/local-app/preview-server.js`
+- `ps -p 33209 -o pid,lstart,command` → started **Wed Apr 8 10:20:40 2026**
+- `ls -la dist/adapters/ui/local-app/preview-server.js` → modified **Apr 8 11:28** (68 min after process start)
+- `curl http://localhost:3002/prompt-edit` before fix → **HTTP 404**
+
+### Correction Applied
+1. `kill 33209` — killed stale process
+2. `node dist/adapters/ui/local-app/preview-server.js &` — restarted with current dist (PID 39652)
+
+### Truth Checks (post-restart)
+
+**`/summary-preview`**
+```
+curl -s -o /dev/null -w "STATUS:%{http_code}" http://localhost:3002/summary-preview
+→ STATUS:200
+data-testid="run-summary"  ✓
+```
+
+**`/prompt-edit`**
+```
+curl -s -o /dev/null -w "STATUS:%{http_code}" http://localhost:3002/prompt-edit
+→ STATUS:200
+
+data-testid markers present in response:
+  data-testid="prompt-editor-session-note"  ✓
+  data-testid="prompt-edit-form"            ✓
+  data-testid="prompt-editor-agent1"        ✓
+  data-testid="prompt-editor-agent2"        ✓
+  data-testid="prompt-editor-save"          ✓
+```
+
+All five selectors that failed in browser validation are now present in live HTTP response.
+
+### Files Changed
+**None.** No source or compiled files were modified. This was a pure process restart.
+
+### Unresolved
+None. All required selector markers confirmed in live response. Ready for browser validation pass.
