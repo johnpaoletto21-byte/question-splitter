@@ -1,0 +1,1 @@
+{"version":3,"file":"preview-server.d.ts","sourceRoot":"","sources":["../../../../adapters/ui/local-app/preview-server.ts"],"names":[],"mappings":"AAAA;;;;;;;;;;;;;;;;;;;;;;GAsBG;AAEH,OAAO,KAAK,IAAI,MAAM,MAAM,CAAC;AAI7B,QAAA,MAAM,YAAY,QAEV,CAAC;AACT,QAAA,MAAM,YAAY,qBAAqB,CAAC;AAExC,iBAAS,mBAAmB,IAAI,IAAI,CAAC,MAAM,CAiB1C;AAED,OAAO,EAAE,mBAAmB,EAAE,YAAY,EAAE,YAAY,EAAE,CAAC"}

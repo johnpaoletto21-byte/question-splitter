@@ -5,7 +5,7 @@
  * TASK-402 adds this module.
  */
 export { uploadToDrive } from './uploader';
-export type { DriveHttpUploadFn } from './uploader';
+export type { DriveHttpUploadFn, DriveHttpPermissionFn } from './uploader';
 export type { DriveUploadResult } from './types';
 export { DriveUploadError } from './types';
 //# sourceMappingURL=index.d.ts.map

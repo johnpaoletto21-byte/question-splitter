@@ -13,6 +13,7 @@
  */
 import type { SegmentationResult } from '../segmentation-contract/types';
 import type { LocalizationResult } from '../localization-contract/types';
+import type { FinalResultRow } from '../result-model/types';
 import type { RunSummaryState } from './types';
 /**
  * Builds a RunSummaryState from a normalized SegmentationResult.
@@ -39,4 +40,26 @@ export declare function buildRunSummaryFromSegmentation(result: SegmentationResu
  * @throws        Error if result.target_id is not found in state.targets.
  */
 export declare function applyLocalizationToSummary(state: RunSummaryState, result: LocalizationResult): RunSummaryState;
+/**
+ * Returns a new RunSummaryState with each target entry updated to reflect
+ * the final pipeline outcome (composition + optional upload).
+ *
+ * - Sets final_status = 'ok' | 'failed' from FinalResultRow.status.
+ * - Carries drive_url when upload succeeded (FinalResultOk.drive_url).
+ * - Carries failure_code and failure_message when the target failed.
+ * - Returns a new state object; does not mutate the input.
+ * - Throws if any row.target_id is not found in state.targets (contract violation).
+ *
+ * INV-4 compliance: review_comment stays in RunSummaryTargetEntry (already set by
+ * prior steps) and is never written back into any FinalResultRow shape.
+ * INV-8 compliance: all rows are processed; one failed target does not hide others.
+ *
+ * @param state  Current RunSummaryState (after localization step at minimum).
+ * @param rows   FinalResultRow[] from runUploadStep (or runCompositionStep if
+ *               no upload was performed).
+ * @returns      Updated RunSummaryState with final_status and optional drive_url /
+ *               failure fields set for every target.
+ * @throws       Error if any row.target_id is not found in state.targets.
+ */
+export declare function applyFinalResultsToSummary(state: RunSummaryState, rows: FinalResultRow[]): RunSummaryState;
 //# sourceMappingURL=summary.d.ts.map

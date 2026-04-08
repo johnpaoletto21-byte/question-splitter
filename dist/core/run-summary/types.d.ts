@@ -51,6 +51,31 @@ export interface RunSummaryTargetEntry {
      * MUST NOT appear in final result rows (INV-4).
      */
     agent2_review_comment?: string;
+    /**
+     * Final pipeline outcome for this target.
+     * 'ok'     — composition (and optional upload) succeeded.
+     * 'failed' — one of: crop, composition, or upload failed.
+     * Absent until applyFinalResultsToSummary has been called.
+     */
+    final_status?: 'ok' | 'failed';
+    /**
+     * Google Drive share URL.
+     * Present only when final_status = 'ok' and upload succeeded.
+     * MUST NOT appear in result-model rows (INV-4 — that contract uses drive_url
+     * on FinalResultOk, which is a different, clean payload type).
+     */
+    drive_url?: string;
+    /**
+     * Stable failure code from Layer B §5.2.
+     * Present only when final_status = 'failed'.
+     * Mirrors FinalResultFailed.failure_code for display purposes.
+     */
+    failure_code?: string;
+    /**
+     * Human-readable failure reason.
+     * Present only when final_status = 'failed'.
+     */
+    failure_message?: string;
 }
 /**
  * Complete run-summary state for one run.
