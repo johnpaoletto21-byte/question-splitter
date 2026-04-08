@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.validateCropTargetProfile = exports.V1_ACTIVE_PROFILE = exports.RunBootstrapError = exports.runLocalizationStep = exports.runSegmentationStep = exports.renderAllSources = exports.bootstrapRun = void 0;
+exports.validateCropTargetProfile = exports.V1_ACTIVE_PROFILE = exports.RunBootstrapError = exports.runCropStep = exports.runLocalizationStep = exports.runSegmentationStep = exports.renderAllSources = exports.bootstrapRun = void 0;
 var bootstrap_1 = require("./bootstrap");
 Object.defineProperty(exports, "bootstrapRun", { enumerable: true, get: function () { return bootstrap_1.bootstrapRun; } });
 var render_step_1 = require("./render-step");
@@ -9,6 +9,8 @@ var segmentation_step_1 = require("./segmentation-step");
 Object.defineProperty(exports, "runSegmentationStep", { enumerable: true, get: function () { return segmentation_step_1.runSegmentationStep; } });
 var localization_step_1 = require("./localization-step");
 Object.defineProperty(exports, "runLocalizationStep", { enumerable: true, get: function () { return localization_step_1.runLocalizationStep; } });
+var crop_step_1 = require("./crop-step");
+Object.defineProperty(exports, "runCropStep", { enumerable: true, get: function () { return crop_step_1.runCropStep; } });
 var types_1 = require("./types");
 Object.defineProperty(exports, "RunBootstrapError", { enumerable: true, get: function () { return types_1.RunBootstrapError; } });
 var profile_1 = require("../crop-target-profile/profile");
