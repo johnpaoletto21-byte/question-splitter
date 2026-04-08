@@ -2,44 +2,42 @@
   "version": 1,
   "files": [
     {
-      "filePath": "core/result-model",
-      "fileName": "types.ts",
-      "lineRange": { "start": 1, "end": 57 }
+      "filePath": "ai-log/question_cropper_v1_1775585265501_1",
+      "fileName": "proof-log.md",
+      "lineRange": { "start": 255, "end": 385 }
     },
     {
-      "filePath": "core/output-composer",
-      "fileName": "composer.ts",
-      "lineRange": { "start": 55, "end": 97 }
+      "filePath": "adapters/upload/google-drive",
+      "fileName": "types.ts"
     },
     {
-      "filePath": "core/output-composer",
-      "fileName": "types.ts",
-      "lineRange": { "start": 59, "end": 77 }
+      "filePath": "adapters/upload/google-drive",
+      "fileName": "uploader.ts"
+    },
+    {
+      "filePath": "adapters/upload/google-drive",
+      "fileName": "index.ts"
+    },
+    {
+      "filePath": "adapters/upload/google-drive/__tests__",
+      "fileName": "uploader.test.ts"
     },
     {
       "filePath": "core/run-orchestrator",
-      "fileName": "composition-step.ts",
-      "lineRange": { "start": 48, "end": 118 }
-    },
-    {
-      "filePath": "core/output-composer/__tests__",
-      "fileName": "composer.test.ts"
-    },
-    {
-      "filePath": "core/result-model/__tests__",
-      "fileName": "types.test.ts"
+      "fileName": "upload-step.ts"
     },
     {
       "filePath": "core/run-orchestrator/__tests__",
-      "fileName": "composition-step.test.ts"
+      "fileName": "upload-step.test.ts"
+    },
+    {
+      "filePath": "core/result-model",
+      "fileName": "types.ts",
+      "lineRange": { "start": 38, "end": 68 }
     },
     {
       "filePath": "core/run-orchestrator",
       "fileName": "index.ts"
-    },
-    {
-      "filePath": "ai-log/question_cropper_v1_1775585265501_1",
-      "fileName": "proof-log.md"
     }
   ]
 }

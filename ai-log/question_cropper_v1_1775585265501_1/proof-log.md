@@ -251,3 +251,88 @@ Matches are field names (`drive_file_id`, `drive_url`) in the result-model contr
 ### Unresolved / follow-up
 - Upload step (TASK-501): drive_file_id and drive_url optional fields are defined in FinalResultRow but not populated yet — correct; upload is TASK-501 scope.
 - Prompt-config-store (TASK-502): not touched in TASK-401 scope.
+
+---
+
+## Run: TASK-402 — Google Drive Upload Adapter + Orchestrator Upload Step (2026-04-08)
+
+### Status: PASS
+
+### Audit summary
+TASK-402 had zero prior implementation. `adapters/upload/google-drive/**` did not exist; `core/run-orchestrator/upload-step.ts` did not exist. All required scaffolding was implemented in this run.
+
+### Files created
+- `adapters/upload/google-drive/types.ts` — DriveUploadResult interface + DriveUploadError class (UPLOAD_FAILED code, targetId, filePath)
+- `adapters/upload/google-drive/uploader.ts` — uploadToDrive() with injectable DriveHttpUploadFn, OAuth token reader, native-fetch multipart Drive upload, 1-retry policy
+- `adapters/upload/google-drive/index.ts` — barrel exports
+- `adapters/upload/google-drive/__tests__/uploader.test.ts` — 9 tests: happy path, retry-success, exhausted-retry, token-missing, token-invalid-JSON, token-no-access_token, no-httpUpload-call-on-token-error
+- `core/run-orchestrator/upload-step.ts` — DriveUploaderFn injection type + runUploadStep()
+- `core/run-orchestrator/__tests__/upload-step.test.ts` — 12 tests: failed-row passthrough, ok-no-path passthrough, successful upload, UPLOAD_FAILED with local_output_path preservation, INV-8 continuation, INV-5 order, INV-4 no review_comment
+
+### Files modified
+- `core/result-model/types.ts:45-67` — added `local_output_path?: string` to FinalResultFailed; required by UPLOAD_FAILED path to preserve the local composed file path for user recovery (Layer B §5.2)
+- `core/run-orchestrator/index.ts` — added `runUploadStep` and `DriveUploaderFn` exports
+- `package.json` — added `test:upload-step` and `test:drive-uploader` scripts
+
+### Implementation decisions
+- `googleapis` SDK was NOT added as a dependency. The default upload implementation uses native `fetch` (Node 18+, `@types/node ^20.14` provides the type) with a manually composed multipart/related body — same pattern as `adapters/segmentation/gemini-segmenter/segmenter.ts` which also uses native fetch. This avoids adding a large SDK dependency while keeping the adapter fully functional.
+- `DriveHttpUploadFn` is injectable in `uploadToDrive()` for test isolation, matching the `HttpPostFn` injection pattern in the segmenter.
+- `DriveUploaderFn` is defined in `core/run-orchestrator/upload-step.ts` (not in the adapter) so core never imports from `adapters/**`. The adapter signature matches the injected type structurally.
+- `local_output_path` was added to `FinalResultFailed` (optional) to preserve the file path when upload fails after successful composition. This is the cleanest way to satisfy "preserve the local output path where available" without forcing string-embedded path recovery from failure_message.
+
+### Layer B boundary check
+- Zero `googleapis`, `@google/genai`, or `vertex` import statements in any `core/**` file (grep confirmed).
+- `review_comment` absent from all FinalResultRow shapes (INV-4, test-confirmed).
+- One FinalResultRow per target, same order (INV-5, test-confirmed by mixed-row ordering test).
+- Failed-row passthrough and UPLOAD_FAILED continuation leave other targets unaffected (INV-8, test-confirmed).
+- `adapters/upload/google-drive/**` does not import from `core/crop-engine`, `adapters/segmentation`, or any other forbidden path.
+
+### Validation
+
+#### `npm run typecheck` → exit 0, no errors
+#### `npm run build`     → exit 0, no errors
+#### `npm test`         → 312/312 tests pass (23 suites; 21 new tests vs. prior baseline of 291)
+#### `npm run test:upload-step`    → 12/12 pass
+#### `npm run test:drive-uploader` → 9/9 pass
+
+### Required grep evidence
+
+#### `rg -n "drive_file_id|drive_url|status" adapters/upload/google-drive core/result-model core/run-orchestrator`
+- `adapters/upload/google-drive/types.ts:19,21` — DriveUploadResult fields
+- `adapters/upload/google-drive/uploader.ts:184` — maps result.id → drive_file_id, result.webViewLink → drive_url
+- `core/result-model/types.ts:33,35` — optional fields on FinalResultOk
+- `core/run-orchestrator/upload-step.ts:40,83,92,93,104` — DriveUploaderFn return shape + row assembly
+
+#### `rg -n "oauth|token|folder" adapters/upload/google-drive adapters/config/local-config`
+- `adapters/upload/google-drive/uploader.ts:115-147` — readAccessToken() reads OAUTH_TOKEN_PATH, extracts access_token
+- `adapters/config/local-config/types.ts:10-17` — DRIVE_FOLDER_ID and OAUTH_TOKEN_PATH already defined
+
+#### `rg -n "googleapis|@google/genai|vertex|drive" core`
+- Zero SDK import statements. Only field name occurrences (`drive_file_id`, `drive_url`) and comment text. INV-9 boundary clean.
+
+### Key diff references
+- `core/result-model/types.ts:55-67` — `local_output_path?` added to FinalResultFailed (UPLOAD_FAILED preservation)
+- `adapters/upload/google-drive/uploader.ts:115-147` — OAuth token file reader with DriveUploadError on missing/malformed token
+- `adapters/upload/google-drive/uploader.ts:155-188` — uploadToDrive(): 2-attempt retry loop, maps result → DriveUploadResult
+- `core/run-orchestrator/upload-step.ts:64-107` — runUploadStep(): failed passthrough → no-path passthrough → upload → UPLOAD_FAILED with local_output_path
+- `core/run-orchestrator/index.ts` — runUploadStep + DriveUploaderFn added to barrel
+
+### Claims satisfied
+- TASK-402 scope: `adapters/upload/google-drive/**` implemented with OAuth token reader + Drive v3 multipart upload + 1-retry policy
+- Normalized upload results: drive_file_id and drive_url returned and wired into FinalResultOk
+- Upload sequencing wired into `core/run-orchestrator/**` after composition via runUploadStep
+- Layer B preserved: no provider SDK in core, no review_comment in result rows, one-file-per-target intact
+- UPLOAD_FAILED path: local_output_path preserved on failed row, other targets continue
+
+### Acceptance bar verification
+- drive_file_id and drive_url populated on successful upload → PASS (upload-step test)
+- retry once on failure, then throw DriveUploadError → PASS (drive-uploader test: 2 calls on exhausted retry)
+- UPLOAD_FAILED row preserves local_output_path → PASS (upload-step "preserves local_output_path" test)
+- failed-row pass-through (INV-8) → PASS (upload-step "failed row pass-through" tests)
+- INV-5 one row per target same order → PASS (upload-step "mixed rows" test)
+- INV-4 no review_comment → PASS (upload-step "review_comment absent" test)
+- INV-9 no googleapis in core → PASS (grep confirms zero SDK import statements)
+
+### Unresolved / follow-up
+- Prompt-config-store (TASK-502) and local UI (TASK-503) not touched — outside TASK-402 scope.
+- The default DriveHttpUploadFn uses `fetch` with a manually composed multipart body. No integration test against a real Drive API is included — this is expected for V1 local-pipeline scope; a smoke test with real credentials is a future step.

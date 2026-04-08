@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.validateCropTargetProfile = exports.V1_ACTIVE_PROFILE = exports.RunBootstrapError = exports.runCompositionStep = exports.runCropStep = exports.runLocalizationStep = exports.runSegmentationStep = exports.renderAllSources = exports.bootstrapRun = void 0;
+exports.validateCropTargetProfile = exports.V1_ACTIVE_PROFILE = exports.RunBootstrapError = exports.runUploadStep = exports.runCompositionStep = exports.runCropStep = exports.runLocalizationStep = exports.runSegmentationStep = exports.renderAllSources = exports.bootstrapRun = void 0;
 var bootstrap_1 = require("./bootstrap");
 Object.defineProperty(exports, "bootstrapRun", { enumerable: true, get: function () { return bootstrap_1.bootstrapRun; } });
 var render_step_1 = require("./render-step");
@@ -13,6 +13,8 @@ var crop_step_1 = require("./crop-step");
 Object.defineProperty(exports, "runCropStep", { enumerable: true, get: function () { return crop_step_1.runCropStep; } });
 var composition_step_1 = require("./composition-step");
 Object.defineProperty(exports, "runCompositionStep", { enumerable: true, get: function () { return composition_step_1.runCompositionStep; } });
+var upload_step_1 = require("./upload-step");
+Object.defineProperty(exports, "runUploadStep", { enumerable: true, get: function () { return upload_step_1.runUploadStep; } });
 var types_1 = require("./types");
 Object.defineProperty(exports, "RunBootstrapError", { enumerable: true, get: function () { return types_1.RunBootstrapError; } });
 var profile_1 = require("../crop-target-profile/profile");

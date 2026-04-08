@@ -48,9 +48,15 @@ export interface FinalResultFailed {
   /** Empty string — no output file was produced. */
   output_file_name: '';
   status: 'failed';
-  /** Stable error code from Layer B §5.2 (e.g. BBOX_INVALID, COMPOSITION_FAILED). */
+  /** Stable error code from Layer B §5.2 (e.g. BBOX_INVALID, COMPOSITION_FAILED, UPLOAD_FAILED). */
   failure_code: string;
   failure_message: string;
+  /**
+   * Preserved local output path when upload fails after successful composition.
+   * Populated by the upload step (TASK-402) so the user can recover the file
+   * even if the Drive upload could not be completed.
+   */
+  local_output_path?: string;
 }
 
 /**
