@@ -137,9 +137,7 @@ describe('applyLocalizationToSummary', () => {
   it('throws when target_id is not found in summary state', () => {
     const state = buildRunSummaryFromSegmentation(makeSegResult());
     const result = makeLocResult({ target_id: 'q_9999' });
-    expect(() => applyLocalizationToSummary(state, result)).toThrow(
-      expect.stringContaining('q_9999'),
-    );
+    expect(() => applyLocalizationToSummary(state, result)).toThrow('q_9999');
   });
 
   it('carries run_id through unchanged', () => {

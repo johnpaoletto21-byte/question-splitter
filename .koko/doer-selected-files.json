@@ -4,72 +4,60 @@
     {
       "filePath": "docs/question-cropper-v1",
       "fileName": "PROOF_LOG.md",
-      "lineRange": { "start": 647, "end": 880 }
+      "lineRange": { "start": 879, "end": 1084 }
     },
     {
-      "filePath": "core/segmentation-contract",
-      "fileName": "types.ts"
+      "filePath": "core/localization-contract",
+      "fileName": "types.ts",
+      "lineRange": { "start": 29, "end": 68 }
     },
     {
-      "filePath": "core/segmentation-contract",
+      "filePath": "core/localization-contract",
       "fileName": "validation.ts",
-      "lineRange": { "start": 47, "end": 72 }
+      "lineRange": { "start": 60, "end": 122 }
     },
     {
-      "filePath": "core/segmentation-contract",
+      "filePath": "core/localization-contract",
       "fileName": "validation.ts",
-      "lineRange": { "start": 95, "end": 170 }
+      "lineRange": { "start": 187, "end": 263 }
     },
     {
-      "filePath": "core/segmentation-contract/__tests__",
-      "fileName": "validation.test.ts"
+      "filePath": "core/localization-contract/__tests__",
+      "fileName": "validation.test.ts",
+      "lineRange": { "start": 285, "end": 321 }
     },
     {
-      "filePath": "adapters/segmentation/gemini-segmenter",
+      "filePath": "adapters/localization/gemini-localizer",
       "fileName": "parser.ts",
-      "lineRange": { "start": 60, "end": 100 }
+      "lineRange": { "start": 45, "end": 145 }
     },
     {
-      "filePath": "adapters/segmentation/gemini-segmenter",
-      "fileName": "segmenter.ts",
-      "lineRange": { "start": 90, "end": 140 }
+      "filePath": "adapters/localization/gemini-localizer/__tests__",
+      "fileName": "parser.test.ts",
+      "lineRange": { "start": 99, "end": 168 }
     },
     {
-      "filePath": "adapters/segmentation/gemini-segmenter/__tests__",
-      "fileName": "parser.test.ts"
-    },
-    {
-      "filePath": "adapters/segmentation/gemini-segmenter/__tests__",
-      "fileName": "segmenter.test.ts"
+      "filePath": "adapters/localization/gemini-localizer/__tests__",
+      "fileName": "localizer.test.ts",
+      "lineRange": { "start": 91, "end": 97 }
     },
     {
       "filePath": "core/run-orchestrator",
-      "fileName": "segmentation-step.ts"
-    },
-    {
-      "filePath": "core/run-orchestrator",
-      "fileName": "index.ts"
+      "fileName": "localization-step.ts"
     },
     {
       "filePath": "core/run-orchestrator/__tests__",
-      "fileName": "segmentation-step.test.ts"
+      "fileName": "localization-step.test.ts"
     },
     {
       "filePath": "core/run-summary",
-      "fileName": "types.ts"
-    },
-    {
-      "filePath": "core/run-summary",
-      "fileName": "summary.ts"
+      "fileName": "summary.ts",
+      "lineRange": { "start": 51, "end": 98 }
     },
     {
       "filePath": "core/run-summary/__tests__",
-      "fileName": "summary.test.ts"
-    },
-    {
-      "filePath": "ai-log/question_cropper_v1_1775585265501_1",
-      "fileName": "proof-log.md",
-      "lineRange": { "start": 140, "end": 185 }
+      "fileName": "summary-localization.test.ts",
+      "lineRange": { "start": 137, "end": 143 }
     }
   ]
 }

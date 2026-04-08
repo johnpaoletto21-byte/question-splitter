@@ -1,16 +1,18 @@
 /**
  * core/run-summary/summary.ts
  *
- * Builds run-summary state from normalized agent outputs.
+ * Builds and updates run-summary state from normalized agent outputs.
  *
- * For TASK-201 this covers Agent 1 (segmentation) output only.
- * Later tasks will add localization and final-result fields.
+ * TASK-201: buildRunSummaryFromSegmentation — Agent 1 (segmentation) output.
+ * TASK-301: applyLocalizationToSummary — Agent 2 (localization) output.
+ * Later tasks will add final-result fields.
  *
- * INV-4 compliance: review_comment flows into RunSummaryTargetEntry
- * (visible to the UI) but is not present in any result-model type.
+ * INV-4 compliance: review_comment fields flow into RunSummaryTargetEntry
+ * (visible to the UI) but are not present in any result-model type.
  * INV-9 compliance: depends only on normalized contracts, not provider types.
  */
 import type { SegmentationResult } from '../segmentation-contract/types';
+import type { LocalizationResult } from '../localization-contract/types';
 import type { RunSummaryState } from './types';
 /**
  * Builds a RunSummaryState from a normalized SegmentationResult.
@@ -21,4 +23,20 @@ import type { RunSummaryState } from './types';
  * - Preserves target order from the segmentation result (reading order).
  */
 export declare function buildRunSummaryFromSegmentation(result: SegmentationResult): RunSummaryState;
+/**
+ * Returns a new RunSummaryState with the target entry for the given
+ * LocalizationResult updated to include Agent 2 status fields.
+ *
+ * - Sets agent2_status = 'needs_review' when review_comment is present.
+ * - Carries agent2_review_comment for UI display (INV-4: not in result rows).
+ * - Returns a new state object; does not mutate the input.
+ * - Throws if the target_id from the localization result is not found in the
+ *   summary state (indicates a contract violation upstream).
+ *
+ * @param state   Current RunSummaryState (from buildRunSummaryFromSegmentation).
+ * @param result  Normalized LocalizationResult for one target.
+ * @returns       Updated RunSummaryState with agent2 fields set for that target.
+ * @throws        Error if result.target_id is not found in state.targets.
+ */
+export declare function applyLocalizationToSummary(state: RunSummaryState, result: LocalizationResult): RunSummaryState;
 //# sourceMappingURL=summary.d.ts.map

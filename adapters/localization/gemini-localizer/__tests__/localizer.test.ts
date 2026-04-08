@@ -91,9 +91,7 @@ describe('selectPagesForTarget', () => {
   it('throws when a required page is not found', () => {
     const target = makeTarget({ regions: [{ page_number: 99 }] });
     const pages = [makePage(1), makePage(2)];
-    expect(() => selectPagesForTarget(target, pages)).toThrow(
-      expect.stringContaining('page_number 99'),
-    );
+    expect(() => selectPagesForTarget(target, pages)).toThrow('page_number 99');
   });
 });
 
@@ -149,9 +147,7 @@ describe('unwrapGeminiLocalizationResponse', () => {
   });
 
   it('throws when candidates array is missing', () => {
-    expect(() => unwrapGeminiLocalizationResponse({ other: 'field' })).toThrow(
-      expect.stringContaining('candidates'),
-    );
+    expect(() => unwrapGeminiLocalizationResponse({ other: 'field' })).toThrow('candidates');
   });
 
   it('throws when content.parts are missing', () => {
@@ -166,9 +162,7 @@ describe('unwrapGeminiLocalizationResponse', () => {
 
   it('throws when text is not valid JSON', () => {
     const bad = makeGeminiEnvelope('not json {{{');
-    expect(() => unwrapGeminiLocalizationResponse(bad)).toThrow(
-      expect.stringContaining('not valid JSON'),
-    );
+    expect(() => unwrapGeminiLocalizationResponse(bad)).toThrow('not valid JSON');
   });
 });
 

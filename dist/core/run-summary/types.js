@@ -10,8 +10,8 @@
  *   - This module depends only on normalized contracts — no provider SDK types.
  *
  * TASK-201 adds the Agent 1 segmentation view of summary state.
- * Later tasks (TASK-301, TASK-401, TASK-501) will extend RunSummaryTargetEntry
- * with localization and final-result fields.
+ * TASK-301 adds Agent 2 localization status fields.
+ * Later tasks (TASK-401, TASK-501) will extend with final-result fields.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 //# sourceMappingURL=types.js.map

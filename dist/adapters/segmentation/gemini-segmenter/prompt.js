@@ -43,7 +43,7 @@ Return them as an ordered list in reading order (top of page 1 first, bottom of 
 - Each target occupies 1 or 2 pages. Maximum ${profile.max_regions_per_target} page regions per target.
 - If a target spans more than ${profile.max_regions_per_target} pages, include only the first
   ${profile.max_regions_per_target} pages and add a review_comment explaining the situation.
-- Do NOT include bbox coordinates — only page numbers.
+- Return only page numbers for each region — do not return crop dimensions or image offsets.
 - Use target_type = "${profile.target_type}" for every target.
 - If you are uncertain about a boundary, include a brief review_comment on that target.
 
