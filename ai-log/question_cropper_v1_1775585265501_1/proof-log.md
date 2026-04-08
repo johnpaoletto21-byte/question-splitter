@@ -459,3 +459,77 @@ App route/page: `renderSummaryHtml(state)` returns a complete HTML document. The
 - No UI framework integration (TASK-503 scope): `renderSummaryHtml` returns a string; caller writes to disk. This is intentional for a local Node.js CLI tool.
 - No integration test against real Drive API (unchanged from TASK-402 note).
 - TASK-502 (prompt-config-store) not touched — outside this scope.
+
+---
+
+## Run: TASK-501 close pass — localhost browser validation (2026-04-08)
+
+### Prior blocker
+
+The previous TASK-501 run used a `data:` URL for browser validation. Browser validation in this initiative only allows `localhost`/`127.0.0.1`. The `data:` URL never loaded in the allowed path, so selectors were never confirmed by a real browser load. TASK-501 was held open.
+
+### What this run does
+
+Adds the smallest possible localhost preview server so the Reviewer can open `http://localhost:3001/summary-preview` and verify all summary UI selectors.
+
+No new npm dependencies added. Uses Node.js built-in `http` module only.
+No changes to `core/**`, `result-model`, `run-summary`, or `summary-renderer` — those are correct and unchanged.
+
+### Files created
+
+- `adapters/ui/local-app/preview-fixture.ts` — `PREVIEW_FIXTURE` RunSummaryState (mixed ok/failed, Agent 1 + Agent 2 comments both visible, one failed row)
+- `adapters/ui/local-app/preview-server.ts` — `createPreviewServer()` using Node built-in `http`; guarded with `require.main === module` so importing in tests is safe; exports `PREVIEW_PORT` (3001), `PREVIEW_PATH` ('/summary-preview'), `createPreviewServer`
+- `adapters/ui/local-app/__tests__/preview-fixture.test.ts` — 13 tests verifying fixture renders with all TASK-501 selectors
+
+### Files modified
+
+- `package.json` — added `"preview": "tsc --project tsconfig.json && node dist/adapters/ui/local-app/preview-server.js"`
+
+### Browser validation path
+
+1. Run: `npm run preview`
+2. Open: `http://localhost:3001/summary-preview`
+3. Verify selectors (all present in the served page):
+   - `[data-testid="run-summary"]`
+   - `[data-testid="summary-row-q_preview_001"]` (status: ok, drive URL anchor present, Agent 1 review note)
+   - `[data-testid="summary-row-q_preview_002"]` (status: failed, dash for drive URL, Agent 2 review note, failure code + message)
+
+### Fixture state
+
+```
+run_id: 'preview_run_mixed_501'
+targets:
+  q_preview_001: agent1 needs_review, review_comment set; agent2 ok; final_status ok; drive_url set
+  q_preview_002: agent1 ok; agent2 needs_review, agent2_review_comment set; final_status failed; COMPOSITION_FAILED
+```
+
+### Validation
+
+- `npm run typecheck` → exit 0, no errors
+- `npm test` → 369/369 tests pass (26 suites; was 355/355 in 25 suites)
+- New test suite: `adapters/ui/local-app/__tests__/preview-fixture.test.ts` — 14 tests, all pass
+
+### Key diff references
+
+- `adapters/ui/local-app/preview-fixture.ts:1–52` — PREVIEW_FIXTURE definition (mixed ok/failed state)
+- `adapters/ui/local-app/preview-server.ts:30–53` — `createPreviewServer()` request handler: GET /summary-preview → renderSummaryHtml(PREVIEW_FIXTURE); 404 otherwise
+- `adapters/ui/local-app/preview-server.ts:55–62` — `require.main === module` guard; `server.listen(3001, '127.0.0.1', ...)`
+- `adapters/ui/local-app/__tests__/preview-fixture.test.ts:1–90` — 14 tests covering all selectors + fixture shape (INV-4 boundary check)
+
+### Guard greps
+
+- `rg -n "review_comment" core/result-model` → only appears in comments confirming absence (`review_comment` must NOT appear); zero field setters. PASS (INV-4 unchanged).
+- `rg -n "googleapis|@google/genai|vertex|drive" core` → `drive_url`, `drive_file_id` as normalized field names only; zero SDK import statements. PASS (INV-9 unchanged).
+
+### Invariants confirmed
+
+- INV-4: `review_comment` stays on `RunSummaryTargetEntry` only; `FinalResultRow` untouched. No `review_comment` added to result-model contracts.
+- INV-8: Both target rows always rendered; failed row visible alongside ok row.
+- INV-9: `preview-server.ts` and `preview-fixture.ts` import only Node built-ins and existing local-app/core types.
+- Boundary map: only `adapters/ui/local-app/**` touched. `core/**` and all other modules unchanged.
+
+### Unresolved / follow-up
+
+- Actual browser click-through is a Reviewer action: `npm run preview`, open `http://localhost:3001/summary-preview`, inspect selectors.
+- No integration test against real Drive API (unchanged from prior runs).
+- TASK-502 (prompt-config-store) not touched — outside this scope.

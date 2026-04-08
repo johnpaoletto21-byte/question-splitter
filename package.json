@@ -18,7 +18,8 @@
     "test:result-model": "jest --testPathPattern='core/result-model'",
     "test:composition-step": "jest --testPathPattern='core/run-orchestrator/__tests__/composition-step'",
     "test:upload-step": "jest --testPathPattern='core/run-orchestrator/__tests__/upload-step'",
-    "test:drive-uploader": "jest --testPathPattern='adapters/upload/google-drive'"
+    "test:drive-uploader": "jest --testPathPattern='adapters/upload/google-drive'",
+    "preview": "tsc --project tsconfig.json && node dist/adapters/ui/local-app/preview-server.js"
   },
   "devDependencies": {
     "@types/jest": "^29.5.12",
