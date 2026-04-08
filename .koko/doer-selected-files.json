@@ -3,26 +3,29 @@
   "files": [
     {
       "filePath": "adapters/ui/local-app",
+      "fileName": "preview-server.ts",
+      "lineRange": { "start": 29, "end": 31 }
+    },
+    {
+      "filePath": "adapters/ui/local-app",
       "fileName": "preview-fixture.ts"
     },
     {
       "filePath": "adapters/ui/local-app",
-      "fileName": "preview-server.ts",
-      "lineRange": { "start": 1, "end": 62 }
+      "fileName": "summary-renderer.ts"
+    },
+    {
+      "filePath": "adapters/ui/local-app/__tests__",
+      "fileName": "summary-renderer.test.ts"
     },
     {
       "filePath": "adapters/ui/local-app/__tests__",
       "fileName": "preview-fixture.test.ts"
     },
     {
-      "filePath": "",
-      "fileName": "package.json",
-      "lineRange": { "start": 21, "end": 23 }
-    },
-    {
       "filePath": "ai-log/question_cropper_v1_1775585265501_1",
       "fileName": "proof-log.md",
-      "lineRange": { "start": 464, "end": 550 }
+      "lineRange": { "start": 537, "end": 648 }
     }
   ]
 }

@@ -533,3 +533,116 @@ targets:
 - Actual browser click-through is a Reviewer action: `npm run preview`, open `http://localhost:3001/summary-preview`, inspect selectors.
 - No integration test against real Drive API (unchanged from prior runs).
 - TASK-502 (prompt-config-store) not touched — outside this scope.
+
+---
+
+## Run: TASK-501 Close Pass — Browser Reachability (Port env var fix)
+
+**Date:** 2026-04-08  
+**Mode:** Execution  
+**Status:** PASS
+
+### What changed
+
+Single 2-line change to `adapters/ui/local-app/preview-server.ts` (line 29):
+
+```diff
+-const PREVIEW_PORT = 3001;
++const PREVIEW_PORT = process.env['PREVIEW_PORT']
++  ? parseInt(process.env['PREVIEW_PORT'], 10)
++  : 3001;
+```
+
+**Why:** Port 3001 is occupied in this environment by the relay workspace Next.js server (PID 92379, `next-server v14.2.35`). The preview server hardcoded 3001. Without this change the server silently lost the bind race and the curl returned a Next.js 404 page. The env var override allows the reviewer to use any free port while keeping 3001 as the documented default.
+
+**Boundary:** Only `adapters/ui/local-app/preview-server.ts` touched. No summary logic, fixture, result-model, or core module changes.
+
+### Files changed
+
+| File | Change |
+|------|--------|
+| `adapters/ui/local-app/preview-server.ts` | Add `PREVIEW_PORT` env var override (line 29, 2-line change) |
+
+### Files NOT changed
+
+- `adapters/ui/local-app/summary-renderer.ts` — unchanged
+- `adapters/ui/local-app/preview-fixture.ts` — unchanged
+- `core/run-summary/**` — unchanged
+- `core/result-model/**` — unchanged
+- `package.json` — unchanged (no new dependencies)
+
+### Startup command for reviewer browser validation
+
+```sh
+# From the initiative root:
+PREVIEW_PORT=3002 npm run preview
+# Then open:
+http://localhost:3002/summary-preview
+```
+
+If port 3001 is free (relay Next.js not running), the original command also works:
+```sh
+npm run preview
+# Then open:
+http://localhost:3001/summary-preview
+```
+
+### Terminal truth check — curl proof
+
+Server started with `PREVIEW_PORT=3002 node dist/adapters/ui/local-app/preview-server.js`, curl against `http://localhost:3002/summary-preview`:
+
+**All data-testid selectors present in HTML response:**
+```
+data-testid="run-summary"
+data-testid="summary-row-q_preview_001"
+data-testid="summary-row-q_preview_002"
+data-testid="summary-row-status-q_preview_001"
+data-testid="summary-row-status-q_preview_002"
+data-testid="summary-row-drive-url-q_preview_001"
+data-testid="summary-row-drive-url-q_preview_002"
+data-testid="summary-row-review-comment-q_preview_001"
+data-testid="summary-row-review-comment-q_preview_002"
+data-testid="summary-row-agent2-review-comment-q_preview_001"
+data-testid="summary-row-agent2-review-comment-q_preview_002"
+data-testid="summary-row-failure-code-q_preview_001"
+data-testid="summary-row-failure-code-q_preview_002"
+data-testid="summary-row-failure-message-q_preview_001"
+data-testid="summary-row-failure-message-q_preview_002"
+```
+
+**Content values confirmed:**
+- `summary-row-status-q_preview_001` → `ok`
+- `summary-row-status-q_preview_002` → `failed`
+- `summary-row-failure-code-q_preview_002` → `COMPOSITION_FAILED`
+- Drive URL for q_preview_001 → `drive.google.com/file/d/preview_ok_123/view`
+- run_id → `preview_run_mixed_501` (present twice: title + body)
+
+### Validation results
+
+| Check | Result |
+|-------|--------|
+| `npm run typecheck` | PASS (0 errors) |
+| `npx jest --testPathPattern='adapters/ui/local-app'` | PASS (37/37 tests) |
+| `npm run build` | PASS (0 errors) |
+| curl `/summary-preview` on port 3002 | PASS — 200 OK, all data-testid selectors present |
+| Status values in HTML | PASS — `ok` and `failed` both visible |
+| INV-4 (no `review_comment` in `FinalResultRow`) | PASS — unchanged, review_comment stays on `RunSummaryTargetEntry` only |
+| INV-8 (both rows rendered) | PASS — q_preview_001 and q_preview_002 both present |
+| INV-9 (no SDK imports in UI) | PASS — only Node built-ins and local-app/core types |
+
+### Environment limitation (documented, not blocking)
+
+Port 3001 is occupied in this dev environment by the relay workspace Next.js server. The reviewer must use `PREVIEW_PORT=3002 npm run preview` (or stop the Next.js server first) to avoid the port collision. This is an environment constraint, not a code defect.
+
+### Where the reviewer should look first
+
+1. `adapters/ui/local-app/preview-server.ts` line 29-31 — the only changed lines
+2. `http://localhost:3002/summary-preview` after running `PREVIEW_PORT=3002 npm run preview` — browser validation target
+3. `adapters/ui/local-app/preview-fixture.ts` — deterministic mixed ok/failed fixture (unchanged)
+4. `adapters/ui/local-app/summary-renderer.ts` — renderer (unchanged)
+
+### Unresolved
+
+- Actual browser click-through is a Reviewer action — no code change can close this gap.
+- Port collision is an environment constraint; reviewer may use PREVIEW_PORT=3002 or stop the competing server.
+- TASK-502/TASK-503 not touched — outside this scope.

@@ -26,7 +26,9 @@ import * as http from 'http';
 import { renderSummaryHtml } from './summary-renderer';
 import { PREVIEW_FIXTURE } from './preview-fixture';
 
-const PREVIEW_PORT = 3001;
+const PREVIEW_PORT = process.env['PREVIEW_PORT']
+  ? parseInt(process.env['PREVIEW_PORT'], 10)
+  : 3001;
 const PREVIEW_PATH = '/summary-preview';
 
 function createPreviewServer(): http.Server {
