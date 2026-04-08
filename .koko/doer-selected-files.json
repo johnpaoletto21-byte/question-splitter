@@ -2,62 +2,33 @@
   "version": 1,
   "files": [
     {
-      "filePath": "docs/question-cropper-v1",
-      "fileName": "PROOF_LOG.md",
-      "lineRange": { "start": 879, "end": 1084 }
+      "filePath": "core/crop-engine",
+      "fileName": "bbox.ts"
     },
     {
-      "filePath": "core/localization-contract",
-      "fileName": "types.ts",
-      "lineRange": { "start": 29, "end": 68 }
+      "filePath": "core/crop-engine",
+      "fileName": "types.ts"
     },
     {
-      "filePath": "core/localization-contract",
-      "fileName": "validation.ts",
-      "lineRange": { "start": 60, "end": 122 }
+      "filePath": "core/crop-engine",
+      "fileName": "index.ts"
     },
     {
-      "filePath": "core/localization-contract",
-      "fileName": "validation.ts",
-      "lineRange": { "start": 187, "end": 263 }
-    },
-    {
-      "filePath": "core/localization-contract/__tests__",
-      "fileName": "validation.test.ts",
-      "lineRange": { "start": 285, "end": 321 }
-    },
-    {
-      "filePath": "adapters/localization/gemini-localizer",
-      "fileName": "parser.ts",
-      "lineRange": { "start": 45, "end": 145 }
-    },
-    {
-      "filePath": "adapters/localization/gemini-localizer/__tests__",
-      "fileName": "parser.test.ts",
-      "lineRange": { "start": 99, "end": 168 }
-    },
-    {
-      "filePath": "adapters/localization/gemini-localizer/__tests__",
-      "fileName": "localizer.test.ts",
-      "lineRange": { "start": 91, "end": 97 }
+      "filePath": "core/crop-engine/__tests__",
+      "fileName": "bbox.test.ts"
     },
     {
       "filePath": "core/run-orchestrator",
-      "fileName": "localization-step.ts"
+      "fileName": "crop-step.ts"
     },
     {
-      "filePath": "core/run-orchestrator/__tests__",
-      "fileName": "localization-step.test.ts"
+      "filePath": "core/run-orchestrator",
+      "fileName": "index.ts"
     },
     {
-      "filePath": "core/run-summary",
-      "fileName": "summary.ts",
-      "lineRange": { "start": 51, "end": 98 }
-    },
-    {
-      "filePath": "core/run-summary/__tests__",
-      "fileName": "summary-localization.test.ts",
-      "lineRange": { "start": 137, "end": 143 }
+      "filePath": "docs/question-cropper-v1",
+      "fileName": "PROOF_LOG.md",
+      "lineRange": { "start": 1085, "end": 1265 }
     }
   ]
 }

@@ -1082,3 +1082,202 @@ Tests:       85 passed, 85 total
 - **`core/run-orchestrator/index.ts`:** Not extended in this run because the orchestrator index already exports `runLocalizationStep` and `Localizer` from the prior commit. The file was confirmed correct; no change needed.
 - **PO-4 final result-model:** No result-model contract exists yet (TASK-401 scope). INV-4 compliance proven by absence: `review_comment` fields are not defined anywhere in any result-model type.
 
+
+
+---
+
+## TASK-302 — Crop Engine: Bbox Validation + Bbox-to-Pixel Conversion
+
+**Run date:** 2026-04-08
+**Status: PASS**
+
+---
+
+### 1. Claims Proven
+
+| Claim | INV/PO ref | Proof |
+|---|---|---|
+| Crop engine validates localized `bbox_1000` again at crop time (not just upstream) | PO-1 / INV-1 | `validateBbox()` in `core/crop-engine/bbox.ts` is the gating check before any image I/O; `runCropStep()` calls it per-region before the injected `CropExecutor` runs |
+| Invalid / out-of-range / inverted boxes are rejected before cropping | PO-3 / INV-3 | `validateBbox` rejects: non-integer, out-of-[0,1000], y_min≥y_max, x_min≥x_max; 13 rejection tests pass |
+| Crop-engine invalid-box failures use stable contract code `BBOX_INVALID` | Layer B §5.2 | `BboxInvalidError.code = 'BBOX_INVALID' as const` |
+| Bbox-to-pixel conversion uses prepared page `image_width` / `image_height` | PO-1 / INV-1 | `bboxToPixelRect(bbox, page.image_width, page.image_height)` — both fields sourced from `PreparedPageImage` (Boundary A) |
+| Tests cover validation failures and concrete bbox-to-pixel conversion | PO-1 / PO-3 | 18 tests: 13 validation, 5 conversion (including documented concrete example) |
+| BBOX_INVALID failure per-target does not kill other targets | INV-8 / PO-7 | `runCropStep` catches `BboxInvalidError` per-target; returns `{ status: 'failed' }` and continues |
+| No provider SDK imports in `core/crop-engine/**` | PO-8 / INV-9 | grep returns empty |
+
+---
+
+### 2. Required Grep Evidence
+
+#### Grep 1 — bbox_1000 / image_width / image_height / page_number in crop-engine and source-model
+
+```
+$ rg -n "bbox_1000|image_width|image_height|page_number" core/crop-engine core/source-model
+core/crop-engine/__tests__/bbox.test.ts:173:   *   image_width  = 1240 px
+core/crop-engine/__tests__/bbox.test.ts:174:   *   image_height = 1754 px
+core/crop-engine/types.ts:18: * Error thrown when a bbox_1000 value fails crop-time validation.
+core/crop-engine/types.ts:71:  page_number: number;
+core/crop-engine/bbox.ts:9: * bbox_1000 format (from Layer B §5.1 / localization-contract):
+core/crop-engine/bbox.ts:30: * Validates a localized bbox_1000 value at crop time.
+core/crop-engine/bbox.ts:94: * Converts a validated bbox_1000 value to a pixel-space rectangle ...
+core/crop-engine/bbox.ts:101: *   x      = round(x_min / 1000 × image_width)
+core/crop-engine/bbox.ts:102: *   y      = round(y_min / 1000 × image_height)
+core/source-model/types.ts:44:  page_number: number;
+core/source-model/types.ts:50:  image_width: number;
+core/source-model/types.ts:53:  image_height: number;
+```
+
+#### Grep 2 — invalid/clamp/reject in crop-engine
+
+```
+$ rg -n "invalid|clamp|reject" core/crop-engine
+core/crop-engine/__tests__/bbox.test.ts:57:// validateBbox — rejection: out-of-range
+core/crop-engine/__tests__/bbox.test.ts:60:describe('validateBbox — out-of-range rejection', () => {
+core/crop-engine/__tests__/bbox.test.ts:102:// validateBbox — rejection: non-integer
+core/crop-engine/__tests__/bbox.test.ts:105:describe('validateBbox — non-integer rejection', () => {
+core/crop-engine/__tests__/bbox.test.ts:120:// validateBbox — rejection: inverted axis
+core/crop-engine/__tests__/bbox.test.ts:123:describe('validateBbox — inverted axis rejection', () => {
+core/crop-engine/bbox.ts:17: * and must not trust that prior layers rejected all bad inputs (TASK-302
+```
+
+No clamping — invalid inputs are rejected, not silently fixed.
+
+#### Grep 3 — no provider SDK in crop-engine
+
+```
+$ rg -n "googleapis|@google/genai|vertex|drive" core/crop-engine
+(no output)
+```
+
+PASS — zero provider SDK references.
+
+---
+
+### 3. Required Validation Evidence
+
+#### typecheck
+
+```
+$ npm run typecheck
+> tsc --project tsconfig.json --noEmit
+(exit 0)
+```
+
+#### build
+
+```
+$ npm run build
+> tsc --project tsconfig.json
+(exit 0)
+```
+
+#### targeted crop-engine test suite
+
+```
+$ npm run test:crop-engine
+PASS core/crop-engine/__tests__/bbox.test.ts
+  validateBbox — valid inputs
+    ✓ accepts a well-formed bbox with typical interior values (1 ms)
+    ✓ accepts boundary-edge bbox [0, 0, 1000, 1000]
+    ✓ accepts a tight but valid bbox where min+1 = max
+  validateBbox — out-of-range rejection
+    ✓ throws BBOX_INVALID when y_min is negative
+    ✓ throws BBOX_INVALID when x_max exceeds 1000
+    ✓ throws BBOX_INVALID when y_max exceeds 1000 (3 ms)
+    ✓ throws BBOX_INVALID when x_min is negative
+  validateBbox — non-integer rejection
+    ✓ throws BBOX_INVALID when y_min is a float
+    ✓ throws BBOX_INVALID when x_max is a float
+  validateBbox — inverted axis rejection
+    ✓ throws BBOX_INVALID when y_min > y_max (inverted y)
+    ✓ throws BBOX_INVALID when y_min === y_max (zero-height)
+    ✓ throws BBOX_INVALID when x_min > x_max (inverted x)
+    ✓ throws BBOX_INVALID when x_min === x_max (zero-width)
+  bboxToPixelRect — concrete conversion
+    ✓ converts bbox [200, 100, 700, 900] on a 1240×1754 page to the expected pixel rect
+    ✓ converts full-page bbox [0, 0, 1000, 1000] to full image dimensions
+    ✓ converts bbox [0, 0, 500, 1000] (top half) correctly
+    ✓ converts bbox [500, 0, 1000, 1000] (bottom half) correctly
+    ✓ rounds fractional pixel values to integers
+
+Test Suites: 1 passed, 1 total
+Tests:       18 passed, 18 total
+```
+
+#### full test suite
+
+```
+$ npm test
+Test Suites: 18 passed, 18 total
+Tests:       263 passed, 263 total
+Time:        3.055 s
+```
+
+---
+
+### 4. Concrete Bbox-to-Pixel Conversion Example
+
+**Input:**
+- `bbox_1000` = `[200, 100, 700, 900]`  (y_min=200, x_min=100, y_max=700, x_max=900)
+- `image_width` = 1240 px
+- `image_height` = 1754 px
+
+**Conversion (`round(coord/1000 × dimension)`):**
+```
+x      = round(100/1000 × 1240) = round(124.0) = 124
+y      = round(200/1000 × 1754) = round(350.8) = 351
+width  = round((900−100)/1000 × 1240) = round(992.0) = 992
+height = round((700−200)/1000 × 1754) = round(877.0) = 877
+```
+
+**Output `PixelRect`:** `{ x: 124, y: 351, width: 992, height: 877 }`
+
+**Verified by test:** `core/crop-engine/__tests__/bbox.test.ts:170-183`
+
+---
+
+### 5. Exact Files Changed
+
+| File | Change type | Purpose |
+|------|-------------|---------|
+| `core/crop-engine/types.ts` | NEW | `BboxInvalidError` (code `BBOX_INVALID`), `PixelRect`, `CropRegionPixels`, `CropEngineTargetResult` |
+| `core/crop-engine/bbox.ts` | NEW | `validateBbox()` crop-time validation; `bboxToPixelRect()` normalized→pixel conversion |
+| `core/crop-engine/index.ts` | NEW | Public re-exports |
+| `core/crop-engine/__tests__/bbox.test.ts` | NEW | 18 unit tests: 13 validation + 5 conversion |
+| `core/run-orchestrator/crop-step.ts` | NEW | `CropExecutor` type + `runCropStep()` with per-target BBOX_INVALID continuation |
+| `core/run-orchestrator/index.ts` | MODIFIED | Added `runCropStep`, `CropExecutor`, `CropStepTargetResult` exports |
+| `package.json` | MODIFIED | Added `test:crop-engine` script |
+| `docs/question-cropper-v1/PROOF_LOG.md` | MODIFIED | This section |
+
+---
+
+### 6. Key Diff References
+
+- `core/crop-engine/bbox.ts:30-81` — `validateBbox()`: integer+range check for all 4 values, then yMin<yMax and xMin<xMax; throws `BboxInvalidError`. **Why:** crop-time gating required by TASK-302 acceptance bar.
+- `core/crop-engine/bbox.ts:94-136` — `bboxToPixelRect()`: `Math.round(xMin/1000*w)`, etc., using `image_width`/`image_height` from PreparedPageImage. **Why:** connects Boundary A dimensions to crop coordinates.
+- `core/crop-engine/types.ts:23-44` — `BboxInvalidError`: `code = 'BBOX_INVALID' as const`, carries `targetId` and `bbox`. **Why:** stable Layer B §5.2 error contract.
+- `core/run-orchestrator/crop-step.ts:95-140` — `runCropStep()` loop: validates → converts → executes; catches `BboxInvalidError` per-target. **Why:** INV-8 compliance (one failure continues to next target).
+- `core/run-orchestrator/index.ts:5,11-12` — crop-step exports added. **Why:** completes orchestrator barrel.
+
+---
+
+### 7. Result Statement
+
+**PASS — all TASK-302 acceptance criteria met.**
+
+- 263/263 tests pass (18 new); typecheck and build exit 0
+- `validateBbox` gates crop time — not deferred to upstream parser
+- `BboxInvalidError.code = 'BBOX_INVALID' as const` — stable error contract
+- `bboxToPixelRect` uses `PreparedPageImage.image_width` / `image_height`
+- Per-target BBOX_INVALID caught in `runCropStep`; other targets continue (INV-8)
+- Zero provider SDK imports in `core/crop-engine/**`
+
+**Approved limitations:**
+- Actual image crop file I/O is injected as `CropExecutor`; no canvas calls in `core/crop-engine/**`. Image I/O is TASK-401+ scope.
+- `core/source-model/**` required no changes — `PreparedPageImage` already had all required fields.
+
+**Deviations from Boundary Map:** None.
+**Protected modules touched:** None.
+**Boundary Map violated:** No.
+
+*I confirm this batch did not cross any Boundary Map lines and followed the Architectural Contract.*
