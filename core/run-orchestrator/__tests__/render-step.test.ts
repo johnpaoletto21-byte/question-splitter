@@ -39,6 +39,11 @@ function makeContext(sourceCount: number): RunContext {
     sources,
     config: MOCK_CONFIG,
     activeProfile: V1_ACTIVE_PROFILE,
+    promptSnapshot: {
+      agent1Prompt: '',
+      agent2Prompt: '',
+      capturedAt: '2026-01-01T00:00:00.000Z',
+    },
     started_at: '2026-01-01T00:00:00.000Z',
   };
 }

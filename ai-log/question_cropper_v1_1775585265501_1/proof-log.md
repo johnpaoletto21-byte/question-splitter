@@ -722,3 +722,144 @@ PREVIEW_PORT=3002 node dist/adapters/ui/local-app/preview-server.js
 
 - TASK-502/TASK-503 not touched — outside this scope.
 - Server is a foreground Node process; it will stop if the shell session ends. Reviewer must validate while it is live or restart using the command above.
+
+---
+
+## Run: TASK-502 — Session-only Prompt Editing + Immutable Run Snapshot (2026-04-08)
+
+### Status: PASS
+
+### Audit finding before this run
+
+`core/prompt-config-store/**` did not exist. The adapters (`gemini-segmenter/prompt.ts`, `gemini-localizer/prompt.ts`) and orchestrator steps (`segmentation-step.ts`, `localization-step.ts`) already had `promptSnapshot: string` parameter hooks with comments "TASK-502 will wire..." — the wiring was explicitly deferred to this task. No UI prompt editing existed. `RunContext` had no `promptSnapshot` field.
+
+### What this run implements
+
+1. `core/prompt-config-store/` — new module: session-only in-memory store with `getPromptConfig`, `setAgent1Prompt`, `setAgent2Prompt`, `capturePromptSnapshot`, `resetPromptConfig`.
+2. `core/run-orchestrator/types.ts` — `promptSnapshot: PromptSnapshot` added to `RunContext` (required, always set by `bootstrapRun`).
+3. `core/run-orchestrator/bootstrap.ts` — calls `capturePromptSnapshot()` at run start; attaches frozen snapshot to `RunContext`.
+4. `adapters/ui/local-app/prompt-editor.ts` — HTML renderer for session-only prompt editing form.
+5. `adapters/ui/local-app/preview-server.ts` — `GET /prompt-edit` + `POST /prompt-edit` routes added (POST-Redirect-GET pattern).
+6. `adapters/ui/local-app/index.ts` — exports `renderPromptEditorHtml`.
+7. Comments in `segmentation-step.ts` and `localization-step.ts` updated from "TASK-502 will wire" → "TASK-502 (complete)".
+8. Tests for all new functionality; existing `render-step.test.ts` and `bootstrap.test.ts` updated.
+
+### Files created
+- `core/prompt-config-store/types.ts` — PromptConfigState, PromptSnapshot interfaces
+- `core/prompt-config-store/store.ts` — session-only in-memory store implementation
+- `core/prompt-config-store/index.ts` — barrel exports
+- `core/prompt-config-store/__tests__/store.test.ts` — 17 unit tests (snapshot freeze, anti-drift, session-only)
+- `adapters/ui/local-app/prompt-editor.ts` — renderPromptEditorHtml() with data-testid selectors
+- `adapters/ui/local-app/__tests__/prompt-editor.test.ts` — 17 unit tests (selectors, session notice, XSS, form structure)
+
+### Files modified
+- `core/run-orchestrator/types.ts` — added `promptSnapshot: PromptSnapshot` to RunContext
+- `core/run-orchestrator/bootstrap.ts` — added `capturePromptSnapshot()` import + call at run start
+- `core/run-orchestrator/index.ts` — added prompt-config-store type and function re-exports
+- `core/run-orchestrator/segmentation-step.ts` — updated "TASK-502 will wire" comments → "TASK-502 (complete)"
+- `core/run-orchestrator/localization-step.ts` — same comment update
+- `core/run-orchestrator/__tests__/bootstrap.test.ts` — added 5 promptSnapshot tests in new describe block
+- `core/run-orchestrator/__tests__/render-step.test.ts` — added `promptSnapshot` field to RunContext fixture
+- `adapters/ui/local-app/preview-server.ts` — added GET /prompt-edit + POST /prompt-edit routes
+- `adapters/ui/local-app/index.ts` — added `renderPromptEditorHtml` export
+- `package.json` — added `test:prompt-store` and `test:prompt-editor` scripts
+
+### Validation
+
+- `npm run typecheck` → exit 0, no errors
+- `npm run build` → exit 0, no errors
+- `npm test` → **408/408 tests pass** (28 suites; was 369/369 in 26 suites before this run; +39 new tests)
+- `npm run test:prompt-store` → 17/17 pass
+- `npm run test:prompt-editor` → 17/17 pass
+- `npx jest --testPathPattern='core/run-orchestrator/__tests__/bootstrap'` → 19/19 pass (includes 5 new promptSnapshot tests)
+
+### Proof that current-run prompts do not change when edited mid-run
+
+**Anti-drift integration proof (store.test.ts:104-113):**
+```
+✓ mid-run edit (agent1) does NOT change the captured snapshot — anti-drift proof (INV-7)
+✓ mid-run edit (agent2) does NOT change the captured snapshot — anti-drift proof (INV-7)
+```
+Mechanism: `capturePromptSnapshot()` returns `Object.freeze({...})` — a frozen shallow copy. `setAgent1Prompt` / `setAgent2Prompt` replace the module-level `_state` reference; the frozen snapshot object is unaffected.
+
+**Bootstrap integration proof (bootstrap.test.ts:185-194):**
+```
+✓ mid-run edit does not change an already-captured snapshot (anti-drift)
+```
+
+### Required grep evidence
+
+#### Guard 4: `rg -n "session-only|prompt snapshot|run start" core/prompt-config-store core/run-orchestrator adapters/ui/local-app`
+Matches confirmed in:
+- `core/prompt-config-store/types.ts` — "session-only" in type doc, "captured at the moment a run starts"
+- `core/prompt-config-store/store.ts` — "Called by the orchestrator at run start (bootstrapRun)"
+- `core/prompt-config-store/__tests__/store.test.ts` — "snapshot is immutable at run start", "session-only behavior — no persistence"
+- `core/run-orchestrator/types.ts` — "Immutable prompt snapshot captured at run start from core/prompt-config-store"
+- `core/run-orchestrator/__tests__/bootstrap.test.ts` — "captures a promptSnapshot at run start", "snapshot reflects the session prompt at run start"
+- `adapters/ui/local-app/prompt-editor.ts` — "session-only (INV-7)", "does not affect a run already in progress"
+- `adapters/ui/local-app/__tests__/prompt-editor.test.ts` — "session-only notice is always visible"
+- `adapters/ui/local-app/preview-server.ts` — "session-only prompt editing UI"
+
+#### `rg -n "persist|localStorage|database" core/prompt-config-store adapters/ui/local-app`
+Only documentation strings appear — "NO persistent storage: no file writes, no database, no localStorage" in `store.ts` and comments in tests. Zero active code paths write to persistent storage. **PASS (INV-7 / PO-6).**
+
+#### Guard 1: `rg -n "googleapis|@google/genai|vertex|drive" core`
+All `drive` matches are field names (`drive_file_id`, `drive_url`) and comments — unchanged from prior runs. Zero SDK import statements in any `core/**` file. **PASS (INV-9 / PO-8).**
+
+#### `rg -n "agent1|agent2|prompt" adapters/segmentation/gemini-segmenter adapters/localization/gemini-localizer`
+Adapter prompt functions (`buildSegmentationPrompt`, `buildLocalizationPrompt`) have `promptSnapshot: string` parameter. If non-empty, they use the snapshot verbatim. This is the adapter-side hook that consumes the snapshot captured in `bootstrapRun`. **PASS.**
+
+### Key diff references
+- `core/prompt-config-store/types.ts:13-35` — PromptConfigState (mutable session state) and PromptSnapshot (immutable run-start copy) interfaces
+- `core/prompt-config-store/store.ts:28-30` — module-level `_state` (session-only closure; no fs/db/localStorage)
+- `core/prompt-config-store/store.ts:55-65` — `capturePromptSnapshot()`: returns `Object.freeze({...})` — frozen shallow copy prevents mid-run drift
+- `core/run-orchestrator/types.ts:58-62` — `promptSnapshot: PromptSnapshot` on RunContext; doc confirms mid-run UI edits do not affect active run (INV-7)
+- `core/run-orchestrator/bootstrap.ts:75-78` — `capturePromptSnapshot()` called at run start; result attached to RunContext
+- `adapters/ui/local-app/prompt-editor.ts:1-97` — prompt editing form with `data-testid` selectors; "Session only" warning prominent
+- `adapters/ui/local-app/preview-server.ts:57-86` — GET /prompt-edit (renders form) + POST /prompt-edit (parses body, updates store, redirects)
+
+### UI selector plan and reachable routes
+
+| Route | Method | Purpose |
+|-------|--------|---------|
+| `http://localhost:3001/summary-preview` | GET | Run summary UI (TASK-501) |
+| `http://localhost:3001/prompt-edit` | GET | Prompt editor UI (TASK-502) |
+| `http://localhost:3001/prompt-edit` | POST | Save prompt edits to session store |
+
+**Prompt editor data-testid selectors:**
+
+| Element | Selector |
+|---------|----------|
+| Form container | `data-testid="prompt-edit-form"` |
+| Agent 1 textarea | `data-testid="prompt-editor-agent1"` |
+| Agent 2 textarea | `data-testid="prompt-editor-agent2"` |
+| Session-only notice | `data-testid="prompt-editor-session-note"` |
+| Save button | `data-testid="prompt-editor-save"` |
+
+**Browser validation command (use alternate port if 3001 is occupied):**
+```sh
+PREVIEW_PORT=3099 npm run preview
+# Open: http://localhost:3099/prompt-edit
+# Navigate back: http://localhost:3099/summary-preview
+```
+
+**curl proof (port 3099):**
+- `GET /prompt-edit` → 200 OK; all 5 data-testid selectors present in HTML response ✓
+- `POST /prompt-edit` with `agent1Prompt=Custom+segmenter&agent2Prompt=Custom+localizer` → 302 redirect ✓
+- Subsequent `GET /prompt-edit` → renders `>Custom segmenter</textarea>` and `>Custom localizer</textarea>` ✓
+
+### Invariants confirmed
+- INV-7: prompt snapshot is immutable at run start — frozen object, mid-run edits to store do not drift into active run. Proven by 2 anti-drift tests in store.test.ts + 1 anti-drift test in bootstrap.test.ts.
+- INV-9: `core/prompt-config-store/store.ts` imports only `./types` — zero provider SDK imports. Guard 1 grep confirms zero new googleapis/genai/vertex SDK imports in `core/**`.
+- Boundary I: `core/prompt-config-store/**` does not import persistent storage, provider SDKs, or adapters. Only `./types` import in `store.ts`.
+- Forbidden dependency NOT violated: `core/prompt-config-store/**` → persistent storage modules: zero such imports.
+
+### PO claims satisfied
+- PO-6 (supports INV-7): prompt snapshot captured at run start (bootstrapRun), frozen, preserved through active run — proven by store tests + bootstrap tests + UI form with session-only notice.
+- PO-8 (supports INV-9): core/prompt-config-store imports only its own types; zero provider SDK in any new `core/**` code — proven by Guard 1 grep.
+
+### Unresolved / follow-up
+- Prompt snapshot wiring to segmentation/localization steps: these steps already accept `promptSnapshot: string`. The caller (orchestrator) must pass `context.promptSnapshot.agent1Prompt` and `context.promptSnapshot.agent2Prompt` respectively. This is documented in the step signatures; no further step-level change was needed.
+- No integration test against real Gemini API (unchanged from prior tasks; expected for V1 scope).
+- TASK-503 (end-to-end continuation proof) not touched — outside this scope.
+

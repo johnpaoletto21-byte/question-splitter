@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.bootstrapRun = bootstrapRun;
 const path_1 = __importDefault(require("path"));
 const profile_1 = require("../crop-target-profile/profile");
+const store_1 = require("../prompt-config-store/store");
 const types_1 = require("./types");
 /**
  * Generate a stable, unique run ID.
@@ -69,6 +70,10 @@ function bootstrapRun(request) {
         sources,
         config,
         activeProfile: profile_1.V1_ACTIVE_PROFILE,
+        // Capture an immutable snapshot of the current session prompts (PO-6 / INV-7).
+        // All agent steps in this run must use context.promptSnapshot — not the live store.
+        // Mid-run UI edits to the store do not affect this frozen snapshot.
+        promptSnapshot: (0, store_1.capturePromptSnapshot)(),
         started_at: new Date().toISOString(),
     };
 }

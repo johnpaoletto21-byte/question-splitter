@@ -19,6 +19,8 @@
     "test:composition-step": "jest --testPathPattern='core/run-orchestrator/__tests__/composition-step'",
     "test:upload-step": "jest --testPathPattern='core/run-orchestrator/__tests__/upload-step'",
     "test:drive-uploader": "jest --testPathPattern='adapters/upload/google-drive'",
+    "test:prompt-store": "jest --testPathPattern='core/prompt-config-store'",
+    "test:prompt-editor": "jest --testPathPattern='adapters/ui/local-app/__tests__/prompt-editor'",
     "preview": "tsc --project tsconfig.json && node dist/adapters/ui/local-app/preview-server.js"
   },
   "devDependencies": {

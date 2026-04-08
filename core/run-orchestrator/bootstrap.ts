@@ -1,5 +1,6 @@
 import path from 'path';
 import { V1_ACTIVE_PROFILE } from '../crop-target-profile/profile';
+import { capturePromptSnapshot } from '../prompt-config-store/store';
 import { PdfSource } from '../source-model/types';
 import { RunBootstrapError, RunContext, RunRequest } from './types';
 
@@ -75,6 +76,10 @@ export function bootstrapRun(request: RunRequest): RunContext {
     sources,
     config,
     activeProfile: V1_ACTIVE_PROFILE,
+    // Capture an immutable snapshot of the current session prompts (PO-6 / INV-7).
+    // All agent steps in this run must use context.promptSnapshot — not the live store.
+    // Mid-run UI edits to the store do not affect this frozen snapshot.
+    promptSnapshot: capturePromptSnapshot(),
     started_at: new Date().toISOString(),
   };
 }

@@ -1,6 +1,7 @@
 import { LocalConfig } from '../../adapters/config/local-config/types';
 import { CropTargetProfile } from '../crop-target-profile/types';
 import { PdfSource, PreparedPageImage } from '../source-model/types';
+import { PromptSnapshot } from '../prompt-config-store/types';
 
 /**
  * The input accepted by `bootstrapRun`.
@@ -52,6 +53,13 @@ export interface RunContext {
    * Satisfies PO-3 / INV-3 / INV-6.
    */
   activeProfile: CropTargetProfile;
+
+  /**
+   * Immutable prompt snapshot captured at run start from core/prompt-config-store.
+   * Agent steps (segmentation, localization) use this snapshot exclusively —
+   * mid-run UI edits to the live store do not affect an active run (INV-7 / PO-6).
+   */
+  promptSnapshot: PromptSnapshot;
 
   /** ISO-8601 timestamp captured at bootstrap time. */
   started_at: string;

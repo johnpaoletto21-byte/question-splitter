@@ -2,6 +2,7 @@ import { bootstrapRun } from '../bootstrap';
 import { RunBootstrapError, RunRequest } from '../types';
 import { V1_ACTIVE_PROFILE } from '../../crop-target-profile/profile';
 import { LocalConfig } from '../../../adapters/config/local-config/types';
+import { resetPromptConfig, setAgent1Prompt, setAgent2Prompt } from '../../prompt-config-store/store';
 
 const MOCK_CONFIG: LocalConfig = {
   GEMINI_API_KEY: 'test-key',
@@ -154,5 +155,47 @@ describe('bootstrapRun — run_id uniqueness', () => {
     const ctx1 = bootstrapRun(makeRequest());
     const ctx2 = bootstrapRun(makeRequest());
     expect(ctx1.run_id).not.toBe(ctx2.run_id);
+  });
+});
+
+describe('bootstrapRun — prompt snapshot (PO-6 / INV-7)', () => {
+  beforeEach(() => {
+    resetPromptConfig();
+  });
+
+  it('captures a promptSnapshot at run start', () => {
+    const ctx = bootstrapRun(makeRequest());
+    expect(ctx.promptSnapshot).toBeDefined();
+    expect(typeof ctx.promptSnapshot.agent1Prompt).toBe('string');
+    expect(typeof ctx.promptSnapshot.agent2Prompt).toBe('string');
+    expect(typeof ctx.promptSnapshot.capturedAt).toBe('string');
+  });
+
+  it('promptSnapshot is frozen — mid-run mutation impossible (INV-7)', () => {
+    const ctx = bootstrapRun(makeRequest());
+    expect(Object.isFrozen(ctx.promptSnapshot)).toBe(true);
+  });
+
+  it('snapshot reflects the session prompt at run start', () => {
+    setAgent1Prompt('custom-a1');
+    setAgent2Prompt('custom-a2');
+    const ctx = bootstrapRun(makeRequest());
+    expect(ctx.promptSnapshot.agent1Prompt).toBe('custom-a1');
+    expect(ctx.promptSnapshot.agent2Prompt).toBe('custom-a2');
+  });
+
+  it('mid-run edit does not change an already-captured snapshot (anti-drift)', () => {
+    setAgent1Prompt('pre-run');
+    const ctx = bootstrapRun(makeRequest());
+
+    setAgent1Prompt('post-run edit');  // simulate mid-run UI edit
+
+    expect(ctx.promptSnapshot.agent1Prompt).toBe('pre-run');
+  });
+
+  it('snapshot with default empty prompts uses adapters built-in prompts', () => {
+    const ctx = bootstrapRun(makeRequest());
+    expect(ctx.promptSnapshot.agent1Prompt).toBe('');
+    expect(ctx.promptSnapshot.agent2Prompt).toBe('');
   });
 });

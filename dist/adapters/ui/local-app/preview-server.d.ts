@@ -1,21 +1,22 @@
 /**
  * adapters/ui/local-app/preview-server.ts
  *
- * Minimal local HTTP server for browser-based validation of the summary UI.
+ * Minimal local HTTP server for browser-based validation of the summary UI
+ * and the session-only prompt editing UI.
  *
- * TASK-501 close pass: resolves the prior data: URL blocker by serving the
- * summary renderer output at an allowed localhost path.
+ * Routes:
+ *   GET  /summary-preview  — renders PREVIEW_FIXTURE via renderSummaryHtml (TASK-501)
+ *   GET  /prompt-edit      — renders session-only prompt editor (TASK-502)
+ *   POST /prompt-edit      — applies prompt edits to the in-memory store, redirects to GET
  *
  * Run:
  *   npm run preview
  *
  * Then open in a browser:
- *   http://localhost:3001/summary-preview
+ *   http://localhost:3001/summary-preview   — run summary UI
+ *   http://localhost:3001/prompt-edit       — prompt editor UI
  *
- * The page renders PREVIEW_FIXTURE (mixed ok/failed state) via renderSummaryHtml.
- * All data-testid selectors from the TASK-501 selector plan are present.
- *
- * Boundary: uses only Node built-in http module and existing local-app modules.
+ * Boundary: uses only Node built-in http module and existing local-app/core modules.
  * No new runtime dependencies added.
  *
  * The server only starts when this file is the Node entry point
@@ -24,6 +25,7 @@
 import * as http from 'http';
 declare const PREVIEW_PORT: number;
 declare const PREVIEW_PATH = "/summary-preview";
+declare const PROMPT_EDIT_PATH = "/prompt-edit";
 declare function createPreviewServer(): http.Server;
-export { createPreviewServer, PREVIEW_PORT, PREVIEW_PATH };
+export { createPreviewServer, PREVIEW_PORT, PREVIEW_PATH, PROMPT_EDIT_PATH };
 //# sourceMappingURL=preview-server.d.ts.map

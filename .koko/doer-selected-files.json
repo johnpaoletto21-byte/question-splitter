@@ -4,20 +4,52 @@
     {
       "filePath": "ai-log/question_cropper_v1_1775585265501_1",
       "fileName": "proof-log.md",
-      "lineRange": { "start": 649, "end": 720 }
+      "lineRange": { "start": 638, "end": 800 }
+    },
+    {
+      "filePath": "core/prompt-config-store",
+      "fileName": "store.ts"
+    },
+    {
+      "filePath": "core/prompt-config-store",
+      "fileName": "types.ts"
+    },
+    {
+      "filePath": "core/prompt-config-store/__tests__",
+      "fileName": "store.test.ts"
+    },
+    {
+      "filePath": "core/run-orchestrator",
+      "fileName": "types.ts",
+      "lineRange": { "start": 55, "end": 75 }
+    },
+    {
+      "filePath": "core/run-orchestrator",
+      "fileName": "bootstrap.ts",
+      "lineRange": { "start": 1, "end": 85 }
+    },
+    {
+      "filePath": "core/run-orchestrator/__tests__",
+      "fileName": "bootstrap.test.ts",
+      "lineRange": { "start": 160, "end": 205 }
+    },
+    {
+      "filePath": "adapters/ui/local-app",
+      "fileName": "prompt-editor.ts"
     },
     {
       "filePath": "adapters/ui/local-app",
       "fileName": "preview-server.ts",
-      "lineRange": { "start": 29, "end": 31 }
+      "lineRange": { "start": 55, "end": 110 }
     },
     {
-      "filePath": "adapters/ui/local-app",
-      "fileName": "preview-fixture.ts"
+      "filePath": "adapters/ui/local-app/__tests__",
+      "fileName": "prompt-editor.test.ts"
     },
     {
-      "filePath": "adapters/ui/local-app",
-      "fileName": "summary-renderer.ts"
+      "filePath": "core/run-orchestrator/__tests__",
+      "fileName": "render-step.test.ts",
+      "lineRange": { "start": 30, "end": 44 }
     }
   ]
 }

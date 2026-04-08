@@ -11,9 +11,9 @@
  *   - `adapters/segmentation/gemini-segmenter` implements the Segmenter type.
  *   - Target order from the normalized result is preserved exactly.
  *
- * TASK-502 will wire promptSnapshot from the prompt-config-store.
- * For TASK-201 the caller passes an empty string to use the adapter's
- * built-in prompt.
+ * TASK-502 (complete): promptSnapshot is captured by bootstrapRun from
+ * core/prompt-config-store and passed here by the caller. The snapshot is
+ * immutable — mid-run UI edits do not drift into an active run (INV-7).
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.runSegmentationStep = runSegmentationStep;
@@ -28,7 +28,7 @@ exports.runSegmentationStep = runSegmentationStep;
  * @param pages          Prepared pages from the render step (INV-1 gate
  *                       must have run before this is called).
  * @param profile        The active crop target profile.
- * @param promptSnapshot Session prompt override (TASK-502 will populate this).
+ * @param promptSnapshot Session prompt override (TASK-502: wired from context.promptSnapshot).
  * @param segmenter      The adapter function that performs the actual call.
  * @returns              Normalized SegmentationResult; target order is authoritative.
  * @throws               Re-throws any error from the segmenter.

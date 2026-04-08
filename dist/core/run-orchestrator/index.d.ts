@@ -15,4 +15,6 @@ export type { ImageStackerFn } from './composition-step';
 export type { DriveUploaderFn } from './upload-step';
 export type { CropTargetProfile } from '../crop-target-profile/types';
 export { V1_ACTIVE_PROFILE, validateCropTargetProfile } from '../crop-target-profile/profile';
+export type { PromptSnapshot, PromptConfigState } from '../prompt-config-store/types';
+export { getPromptConfig, setAgent1Prompt, setAgent2Prompt, capturePromptSnapshot, resetPromptConfig, } from '../prompt-config-store/store';
 //# sourceMappingURL=index.d.ts.map
