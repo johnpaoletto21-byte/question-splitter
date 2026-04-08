@@ -13,7 +13,10 @@
     "test:pdf-renderer": "jest --testPathPattern='adapters/source-preparation/pdf-renderer'",
     "test:render-step": "jest --testPathPattern='core/run-orchestrator/__tests__/render-step'",
     "test:profile": "jest --testPathPattern='core/crop-target-profile'",
-    "test:crop-engine": "jest --testPathPattern='core/crop-engine'"
+    "test:crop-engine": "jest --testPathPattern='core/crop-engine'",
+    "test:output-composer": "jest --testPathPattern='core/output-composer'",
+    "test:result-model": "jest --testPathPattern='core/result-model'",
+    "test:composition-step": "jest --testPathPattern='core/run-orchestrator/__tests__/composition-step'"
   },
   "devDependencies": {
     "@types/jest": "^29.5.12",

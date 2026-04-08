@@ -184,3 +184,70 @@
 - PO-4 partial (INV-4): review_comment in agent output and summary, not in result-model — proven for TASK-201 scope
 - PO-8 partial (INV-9): zero provider SDK in core — proven
 
+
+---
+
+## Run: TASK-401 — Output Composer + Result Model + Orchestrator Composition Step (2026-04-08)
+
+### Result: PASS
+
+### Files created
+- `core/result-model/types.ts` — FinalResultOk, FinalResultFailed, FinalResultRow discriminated union
+- `core/result-model/index.ts` — barrel exports
+- `core/result-model/__tests__/types.test.ts` — 7 tests: required fields, INV-4 (no review_comment), discriminated union narrowing
+- `core/output-composer/types.ts` — ComposerInput, ComposerRegion, ComposerResult, CompositionError
+- `core/output-composer/composer.ts` — composeOutput(), ImageStackerFn injection type
+- `core/output-composer/index.ts` — barrel exports
+- `core/output-composer/__tests__/composer.test.ts` — 12 tests: 1-region passthrough, 2-region stacker call, 0/3+ region rejection (INV-3), mode guard (INV-6)
+- `core/run-orchestrator/composition-step.ts` — runCompositionStep()
+- `core/run-orchestrator/__tests__/composition-step.test.ts` — 9 tests: failed-crop passthrough, 1-region, 2-region, CompositionError continuation
+
+### Files modified
+- `core/run-orchestrator/index.ts` — added runCompositionStep + ImageStackerFn exports
+- `package.json` — added test:output-composer, test:result-model, test:composition-step scripts
+
+### Validation
+- `npm run typecheck` → exit 0, no errors
+- `npm run build`     → exit 0, no errors
+- `npm test`         → 291/291 tests pass (21 suites; 28 new tests vs. prior baseline of 279+)
+- `npm run test:output-composer`    → 12/12 pass
+- `npm run test:result-model`       → 7/7 pass
+- `npm run test:composition-step`   → 9/9 pass
+
+### Guard greps
+
+#### `rg -n "top_to_bottom|composition_mode|output_file_name" core/output-composer core/result-model`
+All `top_to_bottom` references land in `core/output-composer/composer.ts:64` (runtime guard) and `types.ts` (doc comments). `output_file_name` is the Layer B contract field name defined in `core/result-model/types.ts:28,49`. No scattered hardcoding.
+
+#### `rg -n "target_id|source_pages|status" core/result-model core/run-orchestrator`
+`target_id`, `source_pages`, `status` appear in `core/result-model/types.ts` as required contract fields, and in `core/run-orchestrator/composition-step.ts` where rows are assembled. Correct data flow confirmed.
+
+#### `rg -n "googleapis|@google/genai|vertex|drive" core`
+Matches are field names (`drive_file_id`, `drive_url`) in the result-model contract (Layer B required optional fields) and comment text in localization/segmentation contracts. Zero provider SDK import statements in any `core/**` file. INV-9 boundary clean.
+
+### Key diff references
+- `core/result-model/types.ts:24-55` — FinalResultOk and FinalResultFailed interfaces; `review_comment` absent from both (INV-4)
+- `core/output-composer/composer.ts:63-68` — INV-6 guard: `compositionMode !== 'top_to_bottom'` throws CompositionError
+- `core/output-composer/composer.ts:71-76` — INV-3 guard: `regions.length === 0 || regions.length > 2` throws CompositionError (no silent 3+ support)
+- `core/output-composer/composer.ts:78-90` — routing: 1-region passthrough vs 2-region imageStacker call
+- `core/run-orchestrator/composition-step.ts:66-80` — failed crop → failed FinalResultRow, continue (INV-8)
+- `core/run-orchestrator/composition-step.ts:104-116` — CompositionError → failed FinalResultRow, continue (INV-8)
+
+### Claims satisfied
+- PO-3 partial (INV-3, INV-6): composer enforces max 2 regions and top_to_bottom-only at composition time — proven by 12 composer tests
+- PO-4 complete (INV-4): review_comment absent from FinalResultRow type and all rows assembled in composition-step — proven by result-model tests + composition-step INV-4 assertions
+- PO-5 (INV-5): one FinalResultRow per target — proven by composition-step "one row per target in input order" test
+- PO-8 (INV-9): zero provider SDK imports in core — guard grep confirms no googleapis/genai/vertex/drive import statements
+
+### Acceptance bar verification
+- one-region passthrough → exactly one ok FinalResultRow, stacker not called: PASS (3 tests)
+- two-region composition → exactly one ok FinalResultRow, stacker called with top+bottom in order: PASS (2 tests)
+- composition is top-to-bottom only → mode guard throws for any other value: PASS (2 tests)
+- no silent 3+ region support → 3 regions throws CompositionError immediately: PASS (2 tests, includes continuation proof)
+- review_comment absent from result model → INV-4 assertions in result-model and composition-step tests: PASS (4 tests)
+- minimal orchestrator continuation behavior → failed crop and CompositionError both continue to next target: PASS (3 tests)
+- no provider SDK imports in core → grep confirms zero matches: PASS
+
+### Unresolved / follow-up
+- Upload step (TASK-501): drive_file_id and drive_url optional fields are defined in FinalResultRow but not populated yet — correct; upload is TASK-501 scope.
+- Prompt-config-store (TASK-502): not touched in TASK-401 scope.

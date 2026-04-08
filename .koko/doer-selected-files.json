@@ -2,33 +2,44 @@
   "version": 1,
   "files": [
     {
-      "filePath": "core/crop-engine",
-      "fileName": "bbox.ts"
+      "filePath": "core/result-model",
+      "fileName": "types.ts",
+      "lineRange": { "start": 1, "end": 57 }
     },
     {
-      "filePath": "core/crop-engine",
-      "fileName": "types.ts"
+      "filePath": "core/output-composer",
+      "fileName": "composer.ts",
+      "lineRange": { "start": 55, "end": 97 }
     },
     {
-      "filePath": "core/crop-engine",
-      "fileName": "index.ts"
-    },
-    {
-      "filePath": "core/crop-engine/__tests__",
-      "fileName": "bbox.test.ts"
-    },
-    {
-      "filePath": "core/run-orchestrator",
-      "fileName": "crop-step.ts"
+      "filePath": "core/output-composer",
+      "fileName": "types.ts",
+      "lineRange": { "start": 59, "end": 77 }
     },
     {
       "filePath": "core/run-orchestrator",
+      "fileName": "composition-step.ts",
+      "lineRange": { "start": 48, "end": 118 }
+    },
+    {
+      "filePath": "core/output-composer/__tests__",
+      "fileName": "composer.test.ts"
+    },
+    {
+      "filePath": "core/result-model/__tests__",
+      "fileName": "types.test.ts"
+    },
+    {
+      "filePath": "core/run-orchestrator/__tests__",
+      "fileName": "composition-step.test.ts"
+    },
+    {
+      "filePath": "core/run-orchestrator",
       "fileName": "index.ts"
     },
     {
-      "filePath": "docs/question-cropper-v1",
-      "fileName": "PROOF_LOG.md",
-      "lineRange": { "start": 1085, "end": 1265 }
+      "filePath": "ai-log/question_cropper_v1_1775585265501_1",
+      "fileName": "proof-log.md"
     }
   ]
 }
