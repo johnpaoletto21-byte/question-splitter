@@ -382,3 +382,80 @@ TASK-402 had zero prior implementation. `adapters/upload/google-drive/**` did no
 ### Unresolved / follow-up
 - Same as prior run: no integration test against real Drive API (expected for V1 scope).
 - `upload-step.test.ts` already proves permission-failure → UPLOAD_FAILED via the existing `makeFailingUploader` path; no change to that file needed.
+
+---
+
+## Run: TASK-501 audit-and-close pass (2026-04-08)
+
+### Audit Finding
+
+**(a) TASK-501 state before this run:**
+- `core/run-summary/types.ts` — `RunSummaryTargetEntry` had agent review fields (`review_comment`, `agent1_status`, `agent2_status`, `agent2_review_comment`) from TASK-201/301. Did NOT have final-result fields: `final_status`, `drive_url`, `failure_code`, `failure_message`.
+- `core/run-summary/summary.ts` — `buildRunSummaryFromSegmentation` + `applyLocalizationToSummary` present. `applyFinalResultsToSummary` was missing (noted in file comment: "Later tasks will add final-result fields").
+- `adapters/ui/local-app/` — did not exist.
+- `core/result-model/`, `core/run-orchestrator/` — fully implemented by TASK-401/402; accepted by reviewer.
+
+**(b) Exact gaps closed this run:**
+1. `RunSummaryTargetEntry` extended with `final_status`, `drive_url`, `failure_code`, `failure_message`.
+2. `applyFinalResultsToSummary(state, rows)` added to `core/run-summary/summary.ts`.
+3. `core/run-summary/index.ts` updated to export `applyFinalResultsToSummary`.
+4. `adapters/ui/local-app/summary-renderer.ts` created — HTML renderer with `data-testid` selectors.
+5. `adapters/ui/local-app/index.ts` created — barrel export.
+6. `core/run-summary/__tests__/summary-final.test.ts` — 15 unit tests for `applyFinalResultsToSummary`.
+7. `adapters/ui/local-app/__tests__/summary-renderer.test.ts` — 23 unit tests for HTML rendering.
+
+### Result: PASS
+
+### Files touched
+- `core/run-summary/types.ts` — MODIFIED: added `final_status`, `drive_url`, `failure_code`, `failure_message` to `RunSummaryTargetEntry` (lines 62–95)
+- `core/run-summary/summary.ts` — MODIFIED: added `applyFinalResultsToSummary` function (lines 101–161); added `FinalResultRow` import
+- `core/run-summary/index.ts` — MODIFIED: added `applyFinalResultsToSummary` to exports
+- `core/run-summary/__tests__/summary-final.test.ts` — CREATED: 15 tests
+- `adapters/ui/local-app/summary-renderer.ts` — CREATED: HTML renderer with `data-testid` selectors
+- `adapters/ui/local-app/index.ts` — CREATED: barrel export
+- `adapters/ui/local-app/__tests__/summary-renderer.test.ts` — CREATED: 23 tests
+- `ai-log/question_cropper_v1_1775585265501_1/proof-log.md` — this section appended
+
+### Validation
+- `npm run typecheck` → exit 0, no errors
+- `npm test` → 355/355 tests pass (25 suites, was 317/317 in 23 suites)
+- New test suites added: `core/run-summary/__tests__/summary-final.test.ts` (15), `adapters/ui/local-app/__tests__/summary-renderer.test.ts` (23)
+
+### Key diff references
+- `core/run-summary/types.ts:63–95` — final result fields on `RunSummaryTargetEntry`: `final_status`, `drive_url`, `failure_code`, `failure_message`
+- `core/run-summary/summary.ts:101–161` — `applyFinalResultsToSummary` implementation: maps `FinalResultRow[]` into summary state; INV-4 (review_comment preserved, not added to rows); INV-8 (all targets updated, partial failure visible)
+- `adapters/ui/local-app/summary-renderer.ts:1–113` — HTML renderer; see lines 14–27 for the UI selector plan
+- `adapters/ui/local-app/summary-renderer.ts:43–92` — `renderTargetRow` function: every row always rendered (INV-8)
+
+### UI selector plan (stable data-testid values)
+| Element | Selector |
+|---------|----------|
+| Summary container | `data-testid="run-summary"` |
+| Per-row container | `data-testid="summary-row-{target_id}"` |
+| Per-row status | `data-testid="summary-row-status-{target_id}"` |
+| Drive URL anchor | `data-testid="summary-row-drive-url-{target_id}"` |
+| Agent 1 review note | `data-testid="summary-row-review-comment-{target_id}"` |
+| Agent 2 review note | `data-testid="summary-row-agent2-review-comment-{target_id}"` |
+| Failure code | `data-testid="summary-row-failure-code-{target_id}"` |
+| Failure message | `data-testid="summary-row-failure-message-{target_id}"` |
+
+App route/page: `renderSummaryHtml(state)` returns a complete HTML document. The caller writes it to a local `.html` file (e.g. `run-summary.html`) and opens it in a browser. There is no server route — this is a static local report.
+
+### Guard greps (required by task)
+- `rg -n "review_comment" core/run-summary adapters/ui/local-app` → present only in summary state (types, functions, tests) — not in result-model or orchestrator output paths. PASS (INV-4).
+- `rg -n "review_comment|needs_review" core/result-model core/run-orchestrator` → appears only in defensive comments and `expect('review_comment' in row).toBe(false)` assertions. Zero actual field setters on FinalResultRow. PASS (INV-4).
+- `rg -n "failed|status|drive_url" core/run-summary adapters/ui/local-app` → `final_status`, `drive_url`, `failure_code`, `failure_message` all present in summary types, function, and renderer. PASS (PO-4, PO-7).
+
+### Invariants confirmed
+- INV-4: `review_comment` visible in summary state and HTML UI; zero leakage into `FinalResultRow` (confirmed by grep + existing tests in result-model + orchestrator).
+- INV-8: `applyFinalResultsToSummary` iterates all rows; `renderTargetRow` called for every entry regardless of `final_status`; one failed target does not suppress others.
+- INV-9: `adapters/ui/local-app/` imports only `core/run-summary/types` (normalized contracts); no provider SDK types.
+
+### PO claims satisfied
+- PO-4 (supports INV-4): `review_comment` present in RunSummaryTargetEntry, absent from FinalResultRow — proven by types + tests + greps.
+- PO-7 (supports INV-8): mixed ok/failed target set produces per-target rows in summary state and HTML UI — proven by `summary-final.test.ts` "INV-8: partial failure visible" test + `summary-renderer.test.ts` "INV-8: partial failure stays visible" test.
+
+### Unresolved / follow-up
+- No UI framework integration (TASK-503 scope): `renderSummaryHtml` returns a string; caller writes to disk. This is intentional for a local Node.js CLI tool.
+- No integration test against real Drive API (unchanged from TASK-402 note).
+- TASK-502 (prompt-config-store) not touched — outside this scope.

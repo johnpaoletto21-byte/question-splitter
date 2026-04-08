@@ -14,6 +14,7 @@
 
 import type { SegmentationResult } from '../segmentation-contract/types';
 import type { LocalizationResult } from '../localization-contract/types';
+import type { FinalResultRow } from '../result-model/types';
 import type { RunSummaryState, RunSummaryTargetEntry } from './types';
 
 /**
@@ -90,6 +91,74 @@ export function applyLocalizationToSummary(
     updatedEntry,
     ...state.targets.slice(index + 1),
   ];
+
+  return {
+    ...state,
+    targets: updatedTargets,
+  };
+}
+
+/**
+ * Returns a new RunSummaryState with each target entry updated to reflect
+ * the final pipeline outcome (composition + optional upload).
+ *
+ * - Sets final_status = 'ok' | 'failed' from FinalResultRow.status.
+ * - Carries drive_url when upload succeeded (FinalResultOk.drive_url).
+ * - Carries failure_code and failure_message when the target failed.
+ * - Returns a new state object; does not mutate the input.
+ * - Throws if any row.target_id is not found in state.targets (contract violation).
+ *
+ * INV-4 compliance: review_comment stays in RunSummaryTargetEntry (already set by
+ * prior steps) and is never written back into any FinalResultRow shape.
+ * INV-8 compliance: all rows are processed; one failed target does not hide others.
+ *
+ * @param state  Current RunSummaryState (after localization step at minimum).
+ * @param rows   FinalResultRow[] from runUploadStep (or runCompositionStep if
+ *               no upload was performed).
+ * @returns      Updated RunSummaryState with final_status and optional drive_url /
+ *               failure fields set for every target.
+ * @throws       Error if any row.target_id is not found in state.targets.
+ */
+export function applyFinalResultsToSummary(
+  state: RunSummaryState,
+  rows: FinalResultRow[],
+): RunSummaryState {
+  // Build a target-id → index map for O(1) lookup.
+  const indexMap = new Map<string, number>(
+    state.targets.map((t, i) => [t.target_id, i]),
+  );
+
+  // Collect updates: start with a shallow copy of the targets array.
+  const updatedTargets: RunSummaryTargetEntry[] = [...state.targets];
+
+  for (const row of rows) {
+    const idx = indexMap.get(row.target_id);
+    if (idx === undefined) {
+      throw new Error(
+        `applyFinalResultsToSummary: target_id "${row.target_id}" not found in summary state. ` +
+        'Ensure buildRunSummaryFromSegmentation was called before applying final results.',
+      );
+    }
+
+    if (row.status === 'ok') {
+      const updated: RunSummaryTargetEntry = {
+        ...updatedTargets[idx],
+        final_status: 'ok',
+      };
+      if (row.drive_url !== undefined) {
+        updated.drive_url = row.drive_url;
+      }
+      updatedTargets[idx] = updated;
+    } else {
+      // status === 'failed'
+      updatedTargets[idx] = {
+        ...updatedTargets[idx],
+        final_status: 'failed',
+        failure_code: row.failure_code,
+        failure_message: row.failure_message,
+      };
+    }
+  }
 
   return {
     ...state,
