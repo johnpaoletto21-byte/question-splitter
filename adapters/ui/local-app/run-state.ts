@@ -21,6 +21,7 @@ export interface LocalRunRecord {
   status: LocalRunStatus;
   runLabel?: string;
   pdfFileName?: string;
+  pdfFilePath?: string;
   outputDir?: string;
   createdAt: string;
   updatedAt: string;
@@ -46,6 +47,7 @@ function makeRunId(): string {
 export function createRunRecord(input: {
   runLabel?: string;
   pdfFileName?: string;
+  pdfFilePath?: string;
   outputDir?: string;
   extractionFields?: ExtractionFieldDefinition[];
   promptSnapshot?: PromptSnapshot;
@@ -56,6 +58,7 @@ export function createRunRecord(input: {
     status: 'queued',
     runLabel: input.runLabel,
     pdfFileName: input.pdfFileName,
+    pdfFilePath: input.pdfFilePath,
     outputDir: input.outputDir,
     createdAt: timestamp,
     updatedAt: timestamp,

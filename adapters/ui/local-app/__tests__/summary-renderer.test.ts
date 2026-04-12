@@ -361,3 +361,107 @@ describe('renderSummaryHtml — HTML escaping', () => {
     expect(html).toContain('&quot;quoted&quot;');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Tests — split-view layout
+// ---------------------------------------------------------------------------
+
+describe('renderSummaryHtml — split-view layout', () => {
+  it('renders split-view when sourcePdfUrl is provided', () => {
+    const state = buildRunSummaryFromSegmentation(makeSegResult());
+    const html = renderSummaryHtml(state, { sourcePdfUrl: '/runs/test/source-pdf' });
+    expect(html).toContain('data-testid="left-panel"');
+    expect(html).toContain('data-testid="right-panel"');
+    expect(html).toContain('data-testid="source-pdf-embed"');
+  });
+
+  it('embeds the source PDF URL in the right panel', () => {
+    const state = buildRunSummaryFromSegmentation(makeSegResult());
+    const html = renderSummaryHtml(state, { sourcePdfUrl: '/runs/r123/source-pdf' });
+    expect(html).toContain('src="/runs/r123/source-pdf"');
+    expect(html).toContain('type="application/pdf"');
+  });
+
+  it('renders target cards with data-pages attributes', () => {
+    const state = buildRunSummaryFromSegmentation(makeSegResult());
+    const html = renderSummaryHtml(state, { sourcePdfUrl: '/runs/test/source-pdf' });
+    expect(html).toContain('data-pages="1"');
+    expect(html).toContain('data-pages="2,3"');
+  });
+
+  it('renders target cards with status badges', () => {
+    const state = makeSummaryWithFinalResults();
+    const html = renderSummaryHtml(state, { sourcePdfUrl: '/runs/test/source-pdf' });
+    expect(html).toContain('data-testid="summary-row-status-q_0001">ok');
+    expect(html).toContain('data-testid="summary-row-status-q_0002">failed');
+  });
+
+  it('renders target cards with preview images', () => {
+    const html = renderSummaryHtml(makeReviewSummary(), { sourcePdfUrl: '/runs/test/source-pdf' });
+    expect(html).toContain('data-testid="summary-row-preview-q_0001"');
+    expect(html).toContain('src="/runs/local_run_test/preview/q_0001"');
+  });
+
+  it('renders AI comments in target cards', () => {
+    const html = renderSummaryHtml(makeReviewSummary(), { sourcePdfUrl: '/runs/test/source-pdf' });
+    expect(html).toContain('data-testid="summary-row-ai-comments-q_0001"');
+    expect(html).toContain('Agent 1: diagram boundary uncertain');
+    expect(html).toContain('Agent 2: crop touches lower edge');
+  });
+
+  it('renders failure info in failed target cards', () => {
+    const state = makeSummaryWithFinalResults();
+    const html = renderSummaryHtml(state, { sourcePdfUrl: '/runs/test/source-pdf' });
+    expect(html).toContain('data-testid="summary-row-failure-code-q_0002"');
+    expect(html).toContain('COMPOSITION_FAILED');
+    expect(html).toContain('stacker threw unexpected error');
+  });
+
+  it('renders all target rows including failed ones (INV-8)', () => {
+    const state = makeSummaryWithFinalResults();
+    const html = renderSummaryHtml(state, { sourcePdfUrl: '/runs/test/source-pdf' });
+    expect(html).toContain('data-testid="summary-row-q_0001"');
+    expect(html).toContain('data-testid="summary-row-q_0002"');
+  });
+
+  it('falls back to table layout when sourcePdfUrl is absent', () => {
+    const state = buildRunSummaryFromSegmentation(makeSegResult());
+    const html = renderSummaryHtml(state);
+    expect(html).not.toContain('data-testid="left-panel"');
+    expect(html).not.toContain('data-testid="right-panel"');
+    expect(html).toContain('<table data-testid="run-summary">');
+  });
+
+  it('falls back to table layout when sourcePdfUrl is undefined in options', () => {
+    const state = buildRunSummaryFromSegmentation(makeSegResult());
+    const html = renderSummaryHtml(state, {});
+    expect(html).not.toContain('data-testid="left-panel"');
+    expect(html).toContain('<table data-testid="run-summary">');
+  });
+
+  it('includes run_id in the split-view page title', () => {
+    const state = buildRunSummaryFromSegmentation(makeSegResult());
+    const html = renderSummaryHtml(state, { sourcePdfUrl: '/runs/test/source-pdf' });
+    expect(html).toContain('run_test_render_501');
+  });
+
+  it('includes navigation links in split-view', () => {
+    const state = buildRunSummaryFromSegmentation(makeSegResult());
+    const html = renderSummaryHtml(state, { sourcePdfUrl: '/runs/test/source-pdf' });
+    expect(html).toContain('data-testid="summary-run-link"');
+    expect(html).toContain('data-testid="summary-prompt-edit-link"');
+  });
+
+  it('renders dynamic extraction field values in target cards', () => {
+    const html = renderSummaryHtml(makeReviewSummary(), { sourcePdfUrl: '/runs/test/source-pdf' });
+    expect(html).toContain('data-testid="summary-row-field-q_0001-has_diagram"');
+    expect(html).toContain('Yes');
+  });
+
+  it('renders compat comment spans in split-view', () => {
+    const state = buildRunSummaryFromSegmentation(makeSegResult());
+    const html = renderSummaryHtml(state, { sourcePdfUrl: '/runs/test/source-pdf' });
+    expect(html).toContain('data-testid="summary-row-review-comment-q_0001"');
+    expect(html).toContain('data-testid="summary-row-agent2-review-comment-q_0001"');
+  });
+});
