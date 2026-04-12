@@ -42,7 +42,7 @@ describe('page window helpers', () => {
     expect(getAllowedSegmentationRegionPageNumbers(5)).toEqual([4, 5]);
   });
 
-  it('selects only previous and finish page for localization context', () => {
+  it('selects only target region pages for localization context', () => {
     const target: SegmentationTarget = {
       target_id: 'q_0001',
       target_type: 'question',
@@ -51,7 +51,7 @@ describe('page window helpers', () => {
     };
 
     expect(selectLocalizationContextPages(target, [page(1), page(2), page(3)])
-      .map((p) => p.page_number)).toEqual([1, 2]);
+      .map((p) => p.page_number)).toEqual([2]);
   });
 
   it('selects only page 1 for first-page targets', () => {
@@ -64,6 +64,31 @@ describe('page window helpers', () => {
 
     expect(selectLocalizationContextPages(target, [page(1), page(2)])
       .map((p) => p.page_number)).toEqual([1]);
+  });
+
+  it('selects both region pages for a two-page target', () => {
+    const target: SegmentationTarget = {
+      target_id: 'q_0001',
+      target_type: 'question',
+      finish_page_number: 3,
+      regions: [{ page_number: 2 }, { page_number: 3 }],
+    };
+
+    expect(selectLocalizationContextPages(target, [page(1), page(2), page(3), page(4)])
+      .map((p) => p.page_number)).toEqual([2, 3]);
+  });
+
+  it('excludes non-region pages from localization context', () => {
+    const target: SegmentationTarget = {
+      target_id: 'q_0001',
+      target_type: 'question',
+      finish_page_number: 6,
+      regions: [{ page_number: 6 }],
+    };
+
+    // Page 5 is NOT in the target's regions, should not be included
+    expect(selectLocalizationContextPages(target, [page(4), page(5), page(6), page(7)])
+      .map((p) => p.page_number)).toEqual([6]);
   });
 
   it('merges window results and reassigns global target ids', () => {

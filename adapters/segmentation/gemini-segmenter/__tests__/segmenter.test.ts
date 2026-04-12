@@ -308,12 +308,14 @@ describe('segmentPages', () => {
   });
 
   it('repairs a segmentation schema error and returns corrected output', async () => {
+    // Invalid: regions include page 3 which is outside allowed [4, 5], but
+    // the target reaches focus page 5 so the focus-page filter keeps it.
     mockHttpPost
       .mockResolvedValueOnce(makeGeminiEnvelope({
         targets: [{
           target_type: 'question',
           finish_page_number: 5,
-          regions: [{ page_number: 1 }],
+          regions: [{ page_number: 3 }, { page_number: 5 }],
         }],
       }))
       .mockResolvedValueOnce(makeGeminiEnvelope({
@@ -343,18 +345,20 @@ describe('segmentPages', () => {
     const contents = retryBody['contents'] as Record<string, unknown>[];
     const retryPrompt = ((contents[0]['parts'] as Record<string, unknown>[])[0]['text']) as string;
     expect(retryPrompt).toContain('Correction Required');
-    expect(retryPrompt).toContain('max region page 1 must equal finish_page_number 5');
+    expect(retryPrompt).toContain('regions contains page 3');
     expect(retryPrompt).toContain('Allowed output region page_numbers: 4, 5');
-    expect(retryPrompt).toContain('"page_number": 1');
+    expect(retryPrompt).toContain('"page_number": 3');
     expect(result.targets[0].regions).toEqual([{ page_number: 5 }]);
   });
 
   it('throws retry context after segmentation repair retries are exhausted', async () => {
+    // Invalid: regions include page 3 which is outside allowed [4, 5], but
+    // the target reaches focus page 5 so the focus-page filter keeps it.
     mockHttpPost.mockResolvedValue(makeGeminiEnvelope({
       targets: [{
         target_type: 'question',
         finish_page_number: 5,
-        regions: [{ page_number: 1 }],
+        regions: [{ page_number: 3 }, { page_number: 5 }],
       }],
     }));
 

@@ -102,9 +102,38 @@ export function buildGeminiSegmentationSchema(input: {
     targetRequired.push('extraction_fields');
   }
 
+  const classificationPageNumberSchema: Record<string, unknown> = allowedRegionPageNumbers.length > 0
+    ? {
+        type: 'string',
+        description: '1-based page number.',
+        enum: allowedRegionPageNumbers.map(String),
+      }
+    : {
+        type: 'integer',
+        description: '1-based page number.',
+        minimum: 1,
+      };
+
   return {
     type: 'object',
     properties: {
+      page_classifications: {
+        type: 'array',
+        description:
+          'Classification for each provided page. One entry per page, in the same order as pages provided.',
+        items: {
+          type: 'object',
+          properties: {
+            page_number: classificationPageNumberSchema,
+            classification: {
+              type: 'string',
+              description: 'The classification assigned to this page.',
+              enum: ['question_content', 'figure_only', 'blank', 'cover', 'answer_sheet'],
+            },
+          },
+          required: ['page_number', 'classification'],
+        },
+      },
       targets: {
         type: 'array',
         description: 'Ordered list of identified question targets in reading order.',
@@ -115,7 +144,7 @@ export function buildGeminiSegmentationSchema(input: {
         },
       },
     },
-    required: ['targets'],
+    required: ['page_classifications', 'targets'],
   };
 }
 

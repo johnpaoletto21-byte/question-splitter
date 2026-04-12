@@ -294,7 +294,7 @@ describe('runFullPipeline', () => {
 
     expect(segmentCalls).toEqual([[1, 2], [1, 2, 3], [2, 3]]);
     expect(allowedCalls).toEqual([[1], [1, 2], [2, 3]]);
-    expect(localizerPages).toEqual([[1], [1, 2], [2, 3]]);
+    expect(localizerPages).toEqual([[1], [2], [3]]);
     expect(summary.extraction_fields?.[0].key).toBe('has_diagram');
     expect(summary.targets.map((target) => target.target_id)).toEqual(['q_0001', 'q_0002', 'q_0003']);
     expect(summary.targets[1].extraction_fields).toEqual({ has_diagram: true });

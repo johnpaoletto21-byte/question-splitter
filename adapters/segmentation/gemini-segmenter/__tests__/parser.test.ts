@@ -211,4 +211,93 @@ describe('parseGeminiSegmentationResponse', () => {
 
     expect(result.targets[0].regions.map((region) => region.page_number)).toEqual([4, 5]);
   });
+
+  it('drops targets whose all regions are on blank-classified pages', () => {
+    const raw = {
+      page_classifications: [
+        { page_number: 3, classification: 'blank' },
+        { page_number: 4, classification: 'question_content' },
+      ],
+      targets: [
+        { target_type: 'question', regions: [{ page_number: 3 }] },
+        { target_type: 'question', regions: [{ page_number: 4 }] },
+      ],
+    };
+    const result = parseGeminiSegmentationResponse(raw, RUN_ID, 2);
+    expect(result.targets).toHaveLength(1);
+    expect(result.targets[0].target_id).toBe('q_0001');
+    expect(result.targets[0].regions[0].page_number).toBe(4);
+  });
+
+  it('keeps targets with at least one region on a content page', () => {
+    const raw = {
+      page_classifications: [
+        { page_number: 5, classification: 'blank' },
+        { page_number: 6, classification: 'question_content' },
+      ],
+      targets: [
+        { target_type: 'question', regions: [{ page_number: 5 }, { page_number: 6 }] },
+      ],
+    };
+    const result = parseGeminiSegmentationResponse(raw, RUN_ID, 2);
+    expect(result.targets).toHaveLength(1);
+    expect(result.targets[0].regions).toHaveLength(2);
+  });
+
+  it('drops targets on cover and answer_sheet classified pages', () => {
+    const raw = {
+      page_classifications: [
+        { page_number: 1, classification: 'cover' },
+        { page_number: 12, classification: 'answer_sheet' },
+        { page_number: 4, classification: 'question_content' },
+      ],
+      targets: [
+        { target_type: 'question', regions: [{ page_number: 1 }] },
+        { target_type: 'question', regions: [{ page_number: 12 }] },
+        { target_type: 'question', regions: [{ page_number: 4 }] },
+      ],
+    };
+    const result = parseGeminiSegmentationResponse(raw, RUN_ID, 2);
+    expect(result.targets).toHaveLength(1);
+    expect(result.targets[0].regions[0].page_number).toBe(4);
+  });
+
+  it('skips classification filtering when page_classifications is absent', () => {
+    const raw = {
+      targets: [
+        { target_type: 'question', regions: [{ page_number: 3 }] },
+      ],
+    };
+    const result = parseGeminiSegmentationResponse(raw, RUN_ID, 2);
+    expect(result.targets).toHaveLength(1);
+  });
+
+  it('keeps targets on figure_only classified pages', () => {
+    const raw = {
+      page_classifications: [
+        { page_number: 7, classification: 'figure_only' },
+      ],
+      targets: [
+        { target_type: 'question', regions: [{ page_number: 7 }] },
+      ],
+    };
+    const result = parseGeminiSegmentationResponse(raw, RUN_ID, 2);
+    expect(result.targets).toHaveLength(1);
+  });
+
+  it('handles string page numbers in page_classifications', () => {
+    const raw = {
+      page_classifications: [
+        { page_number: '3', classification: 'blank' },
+        { page_number: '4', classification: 'question_content' },
+      ],
+      targets: [
+        { target_type: 'question', regions: [{ page_number: 3 }] },
+        { target_type: 'question', regions: [{ page_number: 4 }] },
+      ],
+    };
+    const result = parseGeminiSegmentationResponse(raw, RUN_ID, 2);
+    expect(result.targets).toHaveLength(1);
+    expect(result.targets[0].regions[0].page_number).toBe(4);
+  });
 });

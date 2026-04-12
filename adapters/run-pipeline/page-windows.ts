@@ -47,9 +47,7 @@ export function selectLocalizationContextPages(
   pages: ReadonlyArray<PreparedPageImage>,
 ): PreparedPageImage[] {
   const sorted = [...pages].sort(byPageNumber);
-  const finishPage = target.finish_page_number ??
-    Math.max(...target.regions.map((region) => region.page_number));
-  const wanted = new Set([finishPage - 1, finishPage]);
+  const wanted = new Set(target.regions.map((region) => region.page_number));
   return sorted.filter((page) => wanted.has(page.page_number));
 }
 

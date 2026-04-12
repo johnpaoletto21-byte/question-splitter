@@ -13,11 +13,13 @@ Return them as an ordered list in reading order: top of the first page first, bo
 
 ## Step 1 — Classify every page before doing anything else
 For each page, assign exactly one of these classifications:
-- question_content: contains a numbered question header and body text
+- question_content: contains a numbered question header (boxed number, circled number, etc.) AND substantive problem body text — equations, word problems, or instructions
 - figure_only: contains only figures, diagrams, graphs, or tables with no question header
-- blank: contains no meaningful exam content (whitespace, filler labels, page numbers only)
+- blank: contains no question content — whitespace, page numbers, intentional blank markers (余白, 〈余白〉, 白紙, このページは白紙です), or navigational notices (e.g. "問題は次のページから始まります", section dividers) without numbered questions
 - cover: contains exam title, duration, instructions, or student number fields — no question content
 - answer_sheet: contains answer boxes, score fields, student number fields, or blank response areas
+
+A page that contains only a short notice, label, or marker — even if it has visible text — is NOT question_content. Classify it as blank.
 
 Only question_content and figure_only pages are used to build targets.
 All other classifications are completely ignored — do not create targets from them and do not attach them to any target.

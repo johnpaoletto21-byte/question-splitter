@@ -17,7 +17,7 @@
 import { validateSegmentationResult } from '../../../core/segmentation-contract/validation';
 import type { SegmentationResult } from '../../../core/segmentation-contract/types';
 import type { ExtractionFieldDefinition } from '../../../core/extraction-fields';
-import type { GeminiRawSegmentationOutput, GeminiRawTarget } from './types';
+import type { GeminiRawSegmentationOutput, GeminiRawTarget, GeminiRawPageClassification } from './types';
 
 export interface ParseGeminiSegmentationOptions {
   extractionFields?: ReadonlyArray<ExtractionFieldDefinition>;
@@ -120,12 +120,36 @@ export function parseGeminiSegmentationResponse(
   // don't reach the focus page. These belong to a previous window and would
   // otherwise fail the "max region page must equal finish_page_number" check.
   const focusPage = options.focusPageNumber;
-  const filteredTargets = focusPage !== undefined
+  let filteredTargets = focusPage !== undefined
     ? targets.filter((t) => {
         const regions = (t as Record<string, unknown>)['regions'] as Array<{ page_number: number }>;
         return regions.some((r) => r.page_number === focusPage);
       }).map((t, i) => ({ ...t, target_id: makeTargetId(offset + i) }))
     : targets;
+
+  // Safety net: drop targets whose ALL regions are on pages the model itself
+  // classified as non-content. A real question must have at least one region
+  // on a question_content or figure_only page. If the model creates a target
+  // but classifies every page it references as blank/cover/answer_sheet,
+  // that's a contradiction — trust the classification.
+  // Gracefully skipped if page_classifications is absent (backward compat).
+  const NON_CONTENT_CLASSIFICATIONS = new Set(['blank', 'cover', 'answer_sheet']);
+  const rawClassifications = (raw as unknown as Record<string, unknown>)['page_classifications'];
+  if (Array.isArray(rawClassifications)) {
+    const nonContentPages = new Set(
+      (rawClassifications as GeminiRawPageClassification[])
+        .filter((c) => NON_CONTENT_CLASSIFICATIONS.has(c.classification))
+        .map((c) => typeof c.page_number === 'string' ? Number(c.page_number) : c.page_number),
+    );
+    if (nonContentPages.size > 0) {
+      filteredTargets = filteredTargets
+        .filter((t) => {
+          const regions = (t as Record<string, unknown>)['regions'] as Array<{ page_number: number }>;
+          return regions.some((r) => !nonContentPages.has(r.page_number));
+        })
+        .map((t, i) => ({ ...t, target_id: makeTargetId(offset + i) }));
+    }
+  }
 
   const normalized = { run_id: runId, targets: filteredTargets };
 
