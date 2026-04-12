@@ -158,7 +158,7 @@ describe('parseGeminiSegmentationResponse', () => {
     expect(result.targets[0].extraction_fields).toEqual({ has_diagram: false });
   });
 
-  it('rejects responses whose target does not finish on the focus page', () => {
+  it('silently drops targets whose regions do not reach the focus page', () => {
     const raw = {
       targets: [{
         target_type: 'question',
@@ -167,12 +167,13 @@ describe('parseGeminiSegmentationResponse', () => {
       }],
     };
 
-    expect(() => parseGeminiSegmentationResponse(raw, RUN_ID, 2, {
+    const result = parseGeminiSegmentationResponse(raw, RUN_ID, 2, {
       focusPageNumber: 2,
-    })).toThrow(expect.objectContaining({ code: 'SEGMENTATION_SCHEMA_INVALID' }));
+    });
+    expect(result.targets).toEqual([]);
   });
 
-  it('rejects focus-page targets whose regions do not include the finish page', () => {
+  it('silently drops focus-page targets whose regions are only on other pages', () => {
     const raw = {
       targets: [{
         target_type: 'question',
@@ -181,12 +182,10 @@ describe('parseGeminiSegmentationResponse', () => {
       }],
     };
 
-    expect(() => parseGeminiSegmentationResponse(raw, RUN_ID, 2, {
+    const result = parseGeminiSegmentationResponse(raw, RUN_ID, 2, {
       focusPageNumber: 5,
-    })).toThrow(expect.objectContaining({
-      code: 'SEGMENTATION_SCHEMA_INVALID',
-      message: expect.stringContaining('finish_page_number 5'),
-    }));
+    });
+    expect(result.targets).toEqual([]);
   });
 
   it('accepts an empty target list for a focus window', () => {
