@@ -116,7 +116,18 @@ export function parseGeminiSegmentationResponse(
     return target;
   });
 
-  const normalized = { run_id: runId, targets };
+  // When running in focus-page mode, silently drop targets whose regions
+  // don't reach the focus page. These belong to a previous window and would
+  // otherwise fail the "max region page must equal finish_page_number" check.
+  const focusPage = options.focusPageNumber;
+  const filteredTargets = focusPage !== undefined
+    ? targets.filter((t) => {
+        const regions = (t as Record<string, unknown>)['regions'] as Array<{ page_number: number }>;
+        return regions.some((r) => r.page_number === focusPage);
+      }).map((t, i) => ({ ...t, target_id: makeTargetId(offset + i) }))
+    : targets;
+
+  const normalized = { run_id: runId, targets: filteredTargets };
 
   // Run full contract validation (enforces INV-2, INV-3, INV-4 constraints).
   return validateSegmentationResult(normalized, maxRegionsPerTarget, {
