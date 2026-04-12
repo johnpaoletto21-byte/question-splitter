@@ -18,6 +18,7 @@
  * base64 encoding, schema field) are all contained here.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.DEFAULT_GEMINI_SEGMENTER_MODEL = void 0;
 exports.encodePageImageAsBase64 = encodePageImageAsBase64;
 exports.buildGeminiRequest = buildGeminiRequest;
 exports.unwrapGeminiResponse = unwrapGeminiResponse;
@@ -26,6 +27,7 @@ const fs_1 = require("fs");
 const prompt_1 = require("./prompt");
 const parser_1 = require("./parser");
 const schema_1 = require("./schema");
+exports.DEFAULT_GEMINI_SEGMENTER_MODEL = 'gemini-3.1-flash-lite-preview';
 // ---------------------------------------------------------------------------
 // Default HTTP client (native fetch, Node.js 18+)
 // ---------------------------------------------------------------------------
@@ -134,7 +136,7 @@ function unwrapGeminiResponse(raw) {
  * @returns              Normalized SegmentationResult with targets in reading order.
  */
 async function segmentPages(runId, pages, profile, promptSnapshot, config, httpPost = defaultHttpPost, encodeFn = encodePageImageAsBase64) {
-    const model = config.model ?? 'gemini-2.0-flash';
+    const model = config.model ?? exports.DEFAULT_GEMINI_SEGMENTER_MODEL;
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent` +
         `?key=${config.apiKey}`;
     const promptText = (0, prompt_1.buildSegmentationPrompt)(pages, profile, promptSnapshot);

@@ -84,9 +84,12 @@ export function renderPromptEditorHtml(state: PromptConfigState): string {
     <strong>Session only</strong> — prompt changes apply to future runs in this session and
     reset when the app restarts. An active run always uses the snapshot captured at its start
     time; editing here does not affect a run already in progress (INV-7).
-    Leave a field empty to use the built-in adapter prompt.
+    The boxes start with the default prompt text for this session.
   </div>
-  <div class="nav"><a href="/summary-preview">\u2190 Back to Run Summary</a></div>
+  <div class="nav">
+    <a href="/run" data-testid="prompt-editor-run-link">Run PDF Pipeline</a> |
+    <a href="/summary-preview">\u2190 Back to Run Summary</a>
+  </div>
   <form method="POST" action="/prompt-edit" data-testid="prompt-edit-form">
     <label for="agent1Prompt">
       Agent 1 — Segmenter Prompt
@@ -96,7 +99,7 @@ export function renderPromptEditorHtml(state: PromptConfigState): string {
       id="agent1Prompt"
       name="agent1Prompt"
       data-testid="prompt-editor-agent1"
-      placeholder="Leave empty to use the built-in Agent 1 prompt"
+      placeholder="Edit the Agent 1 default prompt"
     >${esc(state.agent1Prompt)}</textarea>
 
     <label for="agent2Prompt">
@@ -107,7 +110,7 @@ export function renderPromptEditorHtml(state: PromptConfigState): string {
       id="agent2Prompt"
       name="agent2Prompt"
       data-testid="prompt-editor-agent2"
-      placeholder="Leave empty to use the built-in Agent 2 prompt"
+      placeholder="Edit the Agent 2 default prompt"
     >${esc(state.agent2Prompt)}</textarea>
 
     <button type="submit" data-testid="prompt-editor-save">Save for This Session</button>

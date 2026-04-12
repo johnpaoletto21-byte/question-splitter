@@ -49,10 +49,12 @@ describe('buildSegmentationPrompt', () => {
     expect(prompt).toContain('src_0001_paper');
   });
 
-  it('uses promptSnapshot verbatim when non-empty (TASK-502 hook point)', () => {
+  it('uses promptSnapshot as the editable instruction block when non-empty', () => {
     const snapshot = 'CUSTOM PROMPT: identify targets';
     const prompt = buildSegmentationPrompt([makePage(1)], PROFILE, snapshot);
-    expect(prompt).toBe(snapshot);
+    expect(prompt).toContain(snapshot);
+    expect(prompt).toContain('## Run Context');
+    expect(prompt).toContain('Page 1');
   });
 
   it('ignores whitespace-only promptSnapshot and uses built-in prompt', () => {

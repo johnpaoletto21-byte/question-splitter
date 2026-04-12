@@ -23,6 +23,7 @@ import type { CropTargetProfile } from '../../../core/crop-target-profile/types'
 import type { SegmentationTarget } from '../../../core/segmentation-contract/types';
 import type { LocalizationResult } from '../../../core/localization-contract/types';
 import type { GeminiLocalizerConfig, HttpPostFn } from './types';
+export declare const DEFAULT_GEMINI_LOCALIZER_MODEL = "gemini-3.1-flash-lite-preview";
 /**
  * Reads a prepared page image from disk and returns a base64-encoded string.
  * Kept isolated and testable (same pattern as the segmentation adapter).

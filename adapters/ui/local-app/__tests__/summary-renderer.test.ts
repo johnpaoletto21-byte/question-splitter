@@ -125,6 +125,20 @@ describe('renderSummaryHtml — summary container selector', () => {
     const state = buildRunSummaryFromSegmentation(makeSegResult());
     expect(renderSummaryHtml(state)).toContain('data-testid="run-summary"');
   });
+
+  it('links to the prompt editor from the summary page', () => {
+    const state = buildRunSummaryFromSegmentation(makeSegResult());
+    const html = renderSummaryHtml(state);
+    expect(html).toContain('href="/prompt-edit"');
+    expect(html).toContain('data-testid="summary-prompt-edit-link"');
+  });
+
+  it('links to the real run page from the summary page', () => {
+    const state = buildRunSummaryFromSegmentation(makeSegResult());
+    const html = renderSummaryHtml(state);
+    expect(html).toContain('href="/run"');
+    expect(html).toContain('data-testid="summary-run-link"');
+  });
 });
 
 // ---------------------------------------------------------------------------

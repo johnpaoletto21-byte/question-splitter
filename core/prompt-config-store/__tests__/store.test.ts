@@ -16,6 +16,7 @@ import {
   capturePromptSnapshot,
   resetPromptConfig,
 } from '../store';
+import { DEFAULT_AGENT1_PROMPT, DEFAULT_AGENT2_PROMPT } from '../default-prompts';
 
 beforeEach(() => {
   resetPromptConfig();
@@ -24,10 +25,10 @@ beforeEach(() => {
 // ── Default state ─────────────────────────────────────────────────────────────
 
 describe('getPromptConfig — defaults', () => {
-  it('returns empty strings by default (adapters use built-in prompts)', () => {
+  it('returns editable default prompt text by default', () => {
     const state = getPromptConfig();
-    expect(state.agent1Prompt).toBe('');
-    expect(state.agent2Prompt).toBe('');
+    expect(state.agent1Prompt).toBe(DEFAULT_AGENT1_PROMPT);
+    expect(state.agent2Prompt).toBe(DEFAULT_AGENT2_PROMPT);
   });
 });
 
@@ -46,12 +47,12 @@ describe('setAgent1Prompt / setAgent2Prompt — session editing', () => {
 
   it('agent1 edit does not affect agent2', () => {
     setAgent1Prompt('only one');
-    expect(getPromptConfig().agent2Prompt).toBe('');
+    expect(getPromptConfig().agent2Prompt).toBe(DEFAULT_AGENT2_PROMPT);
   });
 
   it('agent2 edit does not affect agent1', () => {
     setAgent2Prompt('only two');
-    expect(getPromptConfig().agent1Prompt).toBe('');
+    expect(getPromptConfig().agent1Prompt).toBe(DEFAULT_AGENT1_PROMPT);
   });
 
   it('successive edits replace the previous value', () => {
@@ -133,24 +134,24 @@ describe('capturePromptSnapshot — immutable snapshot at run start', () => {
     expect(snap2.agent1Prompt).toBe('run-2 prompt');
   });
 
-  it('snapshot with empty prompts (default) uses built-in prompts in adapters', () => {
+  it('snapshot with defaults contains the editable default prompts', () => {
     // Default state — no edits
     const snap = capturePromptSnapshot();
-    expect(snap.agent1Prompt).toBe('');
-    expect(snap.agent2Prompt).toBe('');
+    expect(snap.agent1Prompt).toBe(DEFAULT_AGENT1_PROMPT);
+    expect(snap.agent2Prompt).toBe(DEFAULT_AGENT2_PROMPT);
   });
 });
 
 // ── Reset utility ─────────────────────────────────────────────────────────────
 
 describe('resetPromptConfig — test utility', () => {
-  it('resets agent1 and agent2 to empty strings after edits', () => {
+  it('resets agent1 and agent2 to defaults after edits', () => {
     setAgent1Prompt('dirty');
     setAgent2Prompt('also dirty');
     resetPromptConfig();
     const state = getPromptConfig();
-    expect(state.agent1Prompt).toBe('');
-    expect(state.agent2Prompt).toBe('');
+    expect(state.agent1Prompt).toBe(DEFAULT_AGENT1_PROMPT);
+    expect(state.agent2Prompt).toBe(DEFAULT_AGENT2_PROMPT);
   });
 });
 
@@ -162,6 +163,6 @@ describe('session-only behavior — no persistence', () => {
     // No fs, no database, no localStorage. State lives in module closure.
     setAgent1Prompt('session-value');
     resetPromptConfig();
-    expect(getPromptConfig().agent1Prompt).toBe('');
+    expect(getPromptConfig().agent1Prompt).toBe(DEFAULT_AGENT1_PROMPT);
   });
 });

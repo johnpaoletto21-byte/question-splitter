@@ -1281,3 +1281,73 @@ height = round((700−200)/1000 × 1754) = round(877.0) = 877
 **Boundary Map violated:** No.
 
 *I confirm this batch did not cross any Boundary Map lines and followed the Architectural Contract.*
+
+---
+
+## Batch: Real PDF Run UI — Browser Upload → Logs → Summary
+
+### Intent
+- Technical: Add a single-user local browser flow that accepts one PDF upload, runs the existing pipeline through Drive upload, shows minimal logs, and renders the final summary.
+- Plain version: The user can open the local app, choose a PDF, click Start Run, watch progress, and open the real summary page.
+
+### Boundaries
+- UI/server changes stay in `adapters/ui/local-app/**`.
+- Full pipeline glue stays in `adapters/run-pipeline/**`.
+- Concrete image file I/O stays in `adapters/image-processing/**`.
+- `core/**` orchestration contracts remain provider-clean and are reused rather than expanded.
+
+### Files changed
+- `adapters/ui/local-app/preview-server.ts` — real `/run`, `/runs/:id`, `/runs/:id/summary` routes while preserving preview/prompt routes.
+- `adapters/ui/local-app/run-renderer.ts`, `run-state.ts`, `upload-handler.ts` — upload form, logs page, in-memory run state, multipart parsing.
+- `adapters/run-pipeline/full-pipeline-runner.ts` — adapter-layer full pipeline glue.
+- `adapters/image-processing/canvas-images.ts` — concrete canvas crop and stack adapters.
+- `package.json`, `package-lock.json` — added `busboy`, `@types/busboy`, and `npm run app`.
+
+### Files confirmed unchanged
+- `core/run-orchestrator/**` stage interfaces remain provider-clean.
+- `core/run-summary/**` summary contracts remain the UI output contract.
+- Gemini and Drive adapters remain the provider-specific integration points.
+
+### Invariants checked
+- Browser upload accepts exactly one PDF and rejects missing/non-PDF uploads.
+- Drive upload remains required for end-to-end success.
+- Per-target crop/composition/upload continuation behavior remains delegated to existing orchestrator steps.
+- Prompt editor state is captured at run start through existing bootstrap behavior.
+
+### Proof obligations
+- Prove all pipeline stages are wired in order by the adapter-layer runner.
+- Prove the local app can create a run and expose logs/summary routes.
+- Prove real canvas crop and stack adapters write valid PNG outputs.
+- Prove existing test suite still passes.
+
+### Grep proofs
+```bash
+$ rg -n "runFullPipeline|renderAllSources|runSegmentationStep|runLocalizationStep|runCropStep|runCompositionStep|runUploadStep" adapters/run-pipeline core/run-orchestrator
+$ rg -n "makeCanvasCropExecutor|makeCanvasImageStacker|CropExecutor|ImageStackerFn" adapters/image-processing core/run-orchestrator core/output-composer
+$ rg -n "GET /run|POST /run|/runs/:runId|parsePdfUpload|busboy" adapters/ui/local-app
+```
+
+### Test / smoke evidence
+```bash
+$ npm run typecheck
+> tsc --project tsconfig.json --noEmit
+
+$ npm test
+Test Suites: 34 passed, 34 total
+Tests:       425 passed, 425 total
+```
+
+Targeted tests added:
+- `adapters/ui/local-app/__tests__/run-renderer.test.ts`
+- `adapters/ui/local-app/__tests__/upload-handler.test.ts`
+- `adapters/ui/local-app/__tests__/preview-server-run.test.ts`
+- `adapters/run-pipeline/__tests__/full-pipeline-runner.test.ts`
+- `adapters/image-processing/__tests__/canvas-images.test.ts`
+
+### Reviewer conclusion
+- Status: PASS
+- Notes:
+  - The UI now has a real browser-upload run path.
+  - The runner uses existing normalized contracts and provider adapters.
+  - The only new dependency is `busboy` for multipart parsing.
+  - Run history remains in memory only, matching the single-user local-app assumption.

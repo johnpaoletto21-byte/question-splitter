@@ -20,6 +20,7 @@
 
 import { renderPromptEditorHtml } from '../prompt-editor';
 import type { PromptConfigState } from '../../../../core/prompt-config-store/types';
+import { DEFAULT_AGENT1_PROMPT, DEFAULT_AGENT2_PROMPT } from '../../../../core/prompt-config-store/default-prompts';
 
 function makeState(overrides: Partial<PromptConfigState> = {}): PromptConfigState {
   return {
@@ -81,6 +82,12 @@ describe('renderPromptEditorHtml — form structure', () => {
     expect(html).toContain('method="POST"');
   });
 
+  it('links to the real run page', () => {
+    const html = renderPromptEditorHtml(makeState());
+    expect(html).toContain('href="/run"');
+    expect(html).toContain('data-testid="prompt-editor-run-link"');
+  });
+
   it('agent1 textarea has name="agent1Prompt"', () => {
     const html = renderPromptEditorHtml(makeState());
     expect(html).toContain('name="agent1Prompt"');
@@ -101,6 +108,15 @@ describe('renderPromptEditorHtml — form structure', () => {
 // ── Current prompt values rendered ────────────────────────────────────────────
 
 describe('renderPromptEditorHtml — renders current prompt values', () => {
+  it('renders default prompt text in the textareas', () => {
+    const html = renderPromptEditorHtml(makeState({
+      agent1Prompt: DEFAULT_AGENT1_PROMPT,
+      agent2Prompt: DEFAULT_AGENT2_PROMPT,
+    }));
+    expect(html).toContain('You are Agent 1');
+    expect(html).toContain('You are Agent 2');
+  });
+
   it('renders agent1Prompt value in the textarea', () => {
     const html = renderPromptEditorHtml(makeState({ agent1Prompt: 'Segment the questions' }));
     expect(html).toContain('Segment the questions');

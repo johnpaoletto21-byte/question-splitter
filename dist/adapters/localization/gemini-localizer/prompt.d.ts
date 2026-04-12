@@ -22,8 +22,8 @@ import type { SegmentationTarget } from '../../../core/segmentation-contract/typ
  *
  * @param target         The Agent 1 segmentation target to localize.
  * @param profile        The active crop target profile (provides target_type context).
- * @param promptSnapshot Optional session prompt override (from TASK-502 prompt store).
- *                       When non-empty this replaces the built-in instruction block.
+ * @param promptSnapshot Optional session instruction block (from TASK-502 prompt store).
+ *                       When empty, the built-in default instruction block is used.
  * @returns              Prompt text string to include as the first `text` part.
  */
 export declare function buildLocalizationPrompt(target: SegmentationTarget, profile: CropTargetProfile, promptSnapshot: string): string;

@@ -18,51 +18,30 @@
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.buildLocalizationPrompt = buildLocalizationPrompt;
+const default_prompts_1 = require("../../../core/prompt-config-store/default-prompts");
 /**
  * Builds the text portion of the Gemini localization prompt for one target.
  *
  * @param target         The Agent 1 segmentation target to localize.
  * @param profile        The active crop target profile (provides target_type context).
- * @param promptSnapshot Optional session prompt override (from TASK-502 prompt store).
- *                       When non-empty this replaces the built-in instruction block.
+ * @param promptSnapshot Optional session instruction block (from TASK-502 prompt store).
+ *                       When empty, the built-in default instruction block is used.
  * @returns              Prompt text string to include as the first `text` part.
  */
 function buildLocalizationPrompt(target, profile, promptSnapshot) {
-    // If the caller supplied a snapshot, use it verbatim (TASK-502 hook point).
-    if (promptSnapshot.trim() !== '') {
-        return promptSnapshot.trim();
-    }
+    const instructionBlock = promptSnapshot.trim() !== ''
+        ? promptSnapshot.trim()
+        : default_prompts_1.DEFAULT_AGENT2_PROMPT;
     const regionList = target.regions
         .map((r, i) => `  - Region ${i + 1}: Page ${r.page_number}`)
         .join('\n');
-    return `You are Agent 2: Region Localizer for an exam-paper processing pipeline.
+    return `${instructionBlock}
 
-## Task
-Locate the exact bounding box of a single ${profile.target_type} target within the provided page image(s).
-Return a bounding box for each page region listed below.
-
-## Target
+## Run Context
 - Target ID: ${target.target_id}
 - Target type: ${profile.target_type}
 - Page regions to localize (in order):
 ${regionList}
-
-## Bounding box format
-Return bbox_1000 as [y_min, x_min, y_max, x_max] on a 0–1000 normalized scale.
-  - (0, 0) is the top-left corner of the page.
-  - (1000, 1000) is the bottom-right corner of the page.
-  - y_min must be strictly less than y_max.
-  - x_min must be strictly less than x_max.
-  - All four values must be integers in [0, 1000].
-
-## Rules
-- Return exactly ${target.regions.length} region entry(s) — one per page listed above.
-- Do NOT add extra regions or change the page order.
-- The page_number in each region entry must match the page number given above.
-- Tightly bound the ${profile.target_type} content: include the question number, all sub-parts,
-  and any associated diagrams or tables, but exclude surrounding whitespace where possible.
-- If the target is partially cut off or the boundary is ambiguous, include a review_comment.
-
-Analyze the image(s) and return the bounding box location of this ${profile.target_type}.`;
+`;
 }
 //# sourceMappingURL=prompt.js.map

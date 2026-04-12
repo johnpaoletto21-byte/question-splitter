@@ -1,8 +1,8 @@
 /**
  * adapters/ui/local-app/preview-server.ts
  *
- * Minimal local HTTP server for browser-based validation of the summary UI
- * and the session-only prompt editing UI.
+ * Local HTTP server for the real browser upload flow, summary preview,
+ * and session-only prompt editing UI.
  *
  * Routes:
  *   GET  /summary-preview  — renders PREVIEW_FIXTURE via renderSummaryHtml (TASK-501)
@@ -23,9 +23,18 @@
  * (require.main === module guard), so importing this module in tests is safe.
  */
 import * as http from 'http';
+import { parsePdfUpload } from './upload-handler';
+import { loadConfig } from '../../config/local-config/loader';
+import type { RunFullPipelineInput } from '../../run-pipeline';
 declare const PREVIEW_PORT: number;
 declare const PREVIEW_PATH = "/summary-preview";
 declare const PROMPT_EDIT_PATH = "/prompt-edit";
-declare function createPreviewServer(): http.Server;
-export { createPreviewServer, PREVIEW_PORT, PREVIEW_PATH, PROMPT_EDIT_PATH };
+declare const RUN_PATH = "/run";
+interface PreviewServerOptions {
+    loadConfigFn?: typeof loadConfig;
+    parsePdfUploadFn?: typeof parsePdfUpload;
+    runFullPipelineFn?: (input: RunFullPipelineInput) => Promise<import('../../../core/run-summary/types').RunSummaryState>;
+}
+declare function createPreviewServer(options?: PreviewServerOptions): http.Server;
+export { createPreviewServer, PREVIEW_PORT, PREVIEW_PATH, PROMPT_EDIT_PATH, RUN_PATH };
 //# sourceMappingURL=preview-server.d.ts.map

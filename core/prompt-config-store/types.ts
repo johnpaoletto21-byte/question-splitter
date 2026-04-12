@@ -14,9 +14,9 @@
  * Used to capture an immutable PromptSnapshot at run start.
  */
 export interface PromptConfigState {
-  /** Current Agent 1 (segmenter) prompt. Empty string means use built-in. */
+  /** Current Agent 1 (segmenter) editable instruction block. Empty string means use built-in. */
   agent1Prompt: string;
-  /** Current Agent 2 (localizer) prompt. Empty string means use built-in. */
+  /** Current Agent 2 (localizer) editable instruction block. Empty string means use built-in. */
   agent2Prompt: string;
 }
 

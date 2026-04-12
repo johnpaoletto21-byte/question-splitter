@@ -104,10 +104,15 @@ function renderSummaryHtml(state) {
     th { background: #f0f0f0; }
     tr[data-testid]:hover { background: #fafafa; }
     a { color: #0066cc; }
+    .nav { margin-bottom: 1.2rem; font-size: 0.875rem; }
   </style>
 </head>
 <body>
   <h1>Run Summary: <code>${esc(state.run_id)}</code></h1>
+  <div class="nav">
+    <a href="/run" data-testid="summary-run-link">Run PDF Pipeline</a> |
+    <a href="/prompt-edit" data-testid="summary-prompt-edit-link">Edit Prompts</a>
+  </div>
   <table data-testid="run-summary">
     <thead>
       <tr>

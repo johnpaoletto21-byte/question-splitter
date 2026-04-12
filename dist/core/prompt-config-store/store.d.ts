@@ -38,7 +38,7 @@ export declare function setAgent2Prompt(prompt: string): void;
  */
 export declare function capturePromptSnapshot(): PromptSnapshot;
 /**
- * Resets the store to default (empty) state.
+ * Resets the store to default editable prompt text.
  * For use in tests only — not part of the production API.
  */
 export declare function resetPromptConfig(): void;

@@ -18,13 +18,14 @@ exports.setAgent1Prompt = setAgent1Prompt;
 exports.setAgent2Prompt = setAgent2Prompt;
 exports.capturePromptSnapshot = capturePromptSnapshot;
 exports.resetPromptConfig = resetPromptConfig;
+const default_prompts_1 = require("./default-prompts");
 /**
  * Default prompts for both agents.
- * Empty string signals the adapter to use its built-in prompt text.
+ * These are editable instruction blocks; adapters append run-specific context.
  */
 const DEFAULT_STATE = {
-    agent1Prompt: '',
-    agent2Prompt: '',
+    agent1Prompt: default_prompts_1.DEFAULT_AGENT1_PROMPT,
+    agent2Prompt: default_prompts_1.DEFAULT_AGENT2_PROMPT,
 };
 /** Live session state — mutable only through the exported setters. */
 let _state = { ...DEFAULT_STATE };
@@ -66,7 +67,7 @@ function capturePromptSnapshot() {
     });
 }
 /**
- * Resets the store to default (empty) state.
+ * Resets the store to default editable prompt text.
  * For use in tests only — not part of the production API.
  */
 function resetPromptConfig() {

@@ -26,6 +26,8 @@ import { parseGeminiSegmentationResponse } from './parser';
 import { GEMINI_SEGMENTATION_SCHEMA } from './schema';
 import type { GeminiSegmenterConfig, HttpPostFn } from './types';
 
+export const DEFAULT_GEMINI_SEGMENTER_MODEL = 'gemini-3.1-flash-lite-preview';
+
 // ---------------------------------------------------------------------------
 // Default HTTP client (native fetch, Node.js 18+)
 // ---------------------------------------------------------------------------
@@ -168,7 +170,7 @@ export async function segmentPages(
   httpPost: HttpPostFn = defaultHttpPost,
   encodeFn: (path: string) => string = encodePageImageAsBase64,
 ): Promise<SegmentationResult> {
-  const model = config.model ?? 'gemini-2.0-flash';
+  const model = config.model ?? DEFAULT_GEMINI_SEGMENTER_MODEL;
   const url =
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent` +
     `?key=${config.apiKey}`;

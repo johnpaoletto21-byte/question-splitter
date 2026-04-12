@@ -20,6 +20,7 @@ import type { PreparedPageImage } from '../../../core/source-model/types';
 import type { CropTargetProfile } from '../../../core/crop-target-profile/types';
 import type { SegmentationResult } from '../../../core/segmentation-contract/types';
 import type { GeminiSegmenterConfig, HttpPostFn } from './types';
+export declare const DEFAULT_GEMINI_SEGMENTER_MODEL = "gemini-3.1-flash-lite-preview";
 /**
  * Reads a prepared page image from disk and returns a base64-encoded string.
  * This keeps the encoding logic isolated and testable.

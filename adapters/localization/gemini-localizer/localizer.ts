@@ -29,6 +29,8 @@ import { parseGeminiLocalizationResponse } from './parser';
 import { GEMINI_LOCALIZATION_SCHEMA } from './schema';
 import type { GeminiLocalizerConfig, HttpPostFn } from './types';
 
+export const DEFAULT_GEMINI_LOCALIZER_MODEL = 'gemini-3.1-flash-lite-preview';
+
 // ---------------------------------------------------------------------------
 // Default HTTP client (native fetch, Node.js 18+)
 // ---------------------------------------------------------------------------
@@ -199,7 +201,7 @@ export async function localizeTarget(
   httpPost: HttpPostFn = defaultHttpPost,
   encodeFn: (path: string) => string = encodePageImageAsBase64,
 ): Promise<LocalizationResult> {
-  const model = config.model ?? 'gemini-2.0-flash';
+  const model = config.model ?? DEFAULT_GEMINI_LOCALIZER_MODEL;
   const url =
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent` +
     `?key=${config.apiKey}`;

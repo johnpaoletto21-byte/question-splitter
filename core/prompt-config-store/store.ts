@@ -13,14 +13,15 @@
  */
 
 import type { PromptConfigState, PromptSnapshot } from './types';
+import { DEFAULT_AGENT1_PROMPT, DEFAULT_AGENT2_PROMPT } from './default-prompts';
 
 /**
  * Default prompts for both agents.
- * Empty string signals the adapter to use its built-in prompt text.
+ * These are editable instruction blocks; adapters append run-specific context.
  */
 const DEFAULT_STATE: PromptConfigState = {
-  agent1Prompt: '',
-  agent2Prompt: '',
+  agent1Prompt: DEFAULT_AGENT1_PROMPT,
+  agent2Prompt: DEFAULT_AGENT2_PROMPT,
 };
 
 /** Live session state — mutable only through the exported setters. */
@@ -68,7 +69,7 @@ export function capturePromptSnapshot(): PromptSnapshot {
 }
 
 /**
- * Resets the store to default (empty) state.
+ * Resets the store to default editable prompt text.
  * For use in tests only — not part of the production API.
  */
 export function resetPromptConfig(): void {

@@ -20,6 +20,7 @@
  * Agent 1 — Agent 2 never drives target order.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.DEFAULT_GEMINI_LOCALIZER_MODEL = void 0;
 exports.encodePageImageAsBase64 = encodePageImageAsBase64;
 exports.buildGeminiLocalizationRequest = buildGeminiLocalizationRequest;
 exports.unwrapGeminiLocalizationResponse = unwrapGeminiLocalizationResponse;
@@ -29,6 +30,7 @@ const fs_1 = require("fs");
 const prompt_1 = require("./prompt");
 const parser_1 = require("./parser");
 const schema_1 = require("./schema");
+exports.DEFAULT_GEMINI_LOCALIZER_MODEL = 'gemini-3.1-flash-lite-preview';
 // ---------------------------------------------------------------------------
 // Default HTTP client (native fetch, Node.js 18+)
 // ---------------------------------------------------------------------------
@@ -157,7 +159,7 @@ function selectPagesForTarget(target, allPages) {
  * @returns              Normalized LocalizationResult for this target.
  */
 async function localizeTarget(runId, target, allPages, profile, promptSnapshot, config, httpPost = defaultHttpPost, encodeFn = encodePageImageAsBase64) {
-    const model = config.model ?? 'gemini-2.0-flash';
+    const model = config.model ?? exports.DEFAULT_GEMINI_LOCALIZER_MODEL;
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent` +
         `?key=${config.apiKey}`;
     const relevantPages = selectPagesForTarget(target, allPages);

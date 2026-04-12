@@ -312,7 +312,7 @@ describe('localizeTarget', () => {
     ).rejects.toMatchObject({ code: 'LOCALIZATION_SCHEMA_INVALID' });
   });
 
-  it('defaults model to gemini-2.0-flash when not specified', async () => {
+  it('defaults model to gemini-3.1-flash-lite-preview when not specified', async () => {
     let capturedUrl = '';
     const httpPost: HttpPostFn = async (url) => {
       capturedUrl = url;
@@ -332,6 +332,6 @@ describe('localizeTarget', () => {
       httpPost,
       () => 'b64',
     );
-    expect(capturedUrl).toContain('gemini-2.0-flash');
+    expect(capturedUrl).toContain('gemini-3.1-flash-lite-preview');
   });
 });

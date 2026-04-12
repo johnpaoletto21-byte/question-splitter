@@ -19,7 +19,7 @@ export interface GeminiSegmenterConfig {
 
   /**
    * Gemini model name.
-   * Defaults to 'gemini-2.0-flash' if not provided.
+   * Defaults to 'gemini-3.1-flash-lite-preview' if not provided.
    */
   model?: string;
 }

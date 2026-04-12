@@ -18,8 +18,8 @@ import type { PreparedPageImage } from '../../../core/source-model/types';
  *
  * @param pages          Ordered prepared page images included in this call.
  * @param profile        The active crop target profile (target_type, max regions).
- * @param promptSnapshot Optional session prompt override (from TASK-502 prompt store).
- *                       When non-empty this replaces the built-in instruction block.
+ * @param promptSnapshot Optional session instruction block (from TASK-502 prompt store).
+ *                       When empty, the built-in default instruction block is used.
  * @returns              Prompt text string to include as the first `text` part.
  */
 export declare function buildSegmentationPrompt(pages: PreparedPageImage[], profile: CropTargetProfile, promptSnapshot: string): string;

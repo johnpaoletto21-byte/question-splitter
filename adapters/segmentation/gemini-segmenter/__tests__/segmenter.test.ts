@@ -192,10 +192,10 @@ describe('segmentPages', () => {
     expect(url).toContain('gemini-1.5-pro');
   });
 
-  it('defaults to gemini-2.0-flash when model not specified', async () => {
+  it('defaults to gemini-3.1-flash-lite-preview when model not specified', async () => {
     await segmentPages(RUN_ID, [makePage(1)], PROFILE, '', CONFIG, mockHttpPost, mockEncodeFn);
     const url = mockHttpPost.mock.calls[0][0] as string;
-    expect(url).toContain('gemini-2.0-flash');
+    expect(url).toContain('gemini-3.1-flash-lite-preview');
   });
 
   it('throws when httpPost returns an invalid response shape', async () => {

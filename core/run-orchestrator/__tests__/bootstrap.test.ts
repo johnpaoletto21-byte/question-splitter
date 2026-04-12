@@ -3,6 +3,7 @@ import { RunBootstrapError, RunRequest } from '../types';
 import { V1_ACTIVE_PROFILE } from '../../crop-target-profile/profile';
 import { LocalConfig } from '../../../adapters/config/local-config/types';
 import { resetPromptConfig, setAgent1Prompt, setAgent2Prompt } from '../../prompt-config-store/store';
+import { DEFAULT_AGENT1_PROMPT, DEFAULT_AGENT2_PROMPT } from '../../prompt-config-store/default-prompts';
 
 const MOCK_CONFIG: LocalConfig = {
   GEMINI_API_KEY: 'test-key',
@@ -193,9 +194,9 @@ describe('bootstrapRun — prompt snapshot (PO-6 / INV-7)', () => {
     expect(ctx.promptSnapshot.agent1Prompt).toBe('pre-run');
   });
 
-  it('snapshot with default empty prompts uses adapters built-in prompts', () => {
+  it('snapshot with default prompts captures the editable defaults', () => {
     const ctx = bootstrapRun(makeRequest());
-    expect(ctx.promptSnapshot.agent1Prompt).toBe('');
-    expect(ctx.promptSnapshot.agent2Prompt).toBe('');
+    expect(ctx.promptSnapshot.agent1Prompt).toBe(DEFAULT_AGENT1_PROMPT);
+    expect(ctx.promptSnapshot.agent2Prompt).toBe(DEFAULT_AGENT2_PROMPT);
   });
 });

@@ -11,9 +11,18 @@ const FULL_ENV: NodeJS.ProcessEnv = {
   OUTPUT_DIR: '/tmp/output',
 };
 
+const MISSING_CONFIG_PATH = path.join(
+  os.tmpdir(),
+  `question-cropper-v1-missing-config-${process.pid}.json`,
+);
+
 describe('loadConfig — environment variables', () => {
+  beforeAll(() => {
+    fs.rmSync(MISSING_CONFIG_PATH, { force: true });
+  });
+
   it('returns a valid LocalConfig when all required env vars are set', () => {
-    const config = loadConfig(undefined, FULL_ENV);
+    const config = loadConfig(MISSING_CONFIG_PATH, FULL_ENV);
     expect(config.GEMINI_API_KEY).toBe('test-gemini-key');
     expect(config.DRIVE_FOLDER_ID).toBe('test-folder-id');
     expect(config.OAUTH_TOKEN_PATH).toBe('/tmp/token.json');
@@ -21,10 +30,10 @@ describe('loadConfig — environment variables', () => {
   });
 
   it('throws ConfigMissingError listing all missing keys when all env vars are absent', () => {
-    expect(() => loadConfig(undefined, {})).toThrow(ConfigMissingError);
+    expect(() => loadConfig(MISSING_CONFIG_PATH, {})).toThrow(ConfigMissingError);
 
     try {
-      loadConfig(undefined, {});
+      loadConfig(MISSING_CONFIG_PATH, {});
     } catch (err) {
       expect(err).toBeInstanceOf(ConfigMissingError);
       const e = err as ConfigMissingError;
@@ -43,7 +52,7 @@ describe('loadConfig — environment variables', () => {
       // OAUTH_TOKEN_PATH and OUTPUT_DIR missing
     };
     try {
-      loadConfig(undefined, partialEnv);
+      loadConfig(MISSING_CONFIG_PATH, partialEnv);
       fail('Expected ConfigMissingError');
     } catch (err) {
       expect(err).toBeInstanceOf(ConfigMissingError);
@@ -60,12 +69,12 @@ describe('loadConfig — environment variables', () => {
       ...FULL_ENV,
       GEMINI_API_KEY: '   ',
     };
-    expect(() => loadConfig(undefined, envWithBlanks)).toThrow(ConfigMissingError);
+    expect(() => loadConfig(MISSING_CONFIG_PATH, envWithBlanks)).toThrow(ConfigMissingError);
   });
 
   it('error message names missing keys and includes fix guidance', () => {
     try {
-      loadConfig(undefined, {});
+      loadConfig(MISSING_CONFIG_PATH, {});
     } catch (err) {
       const e = err as ConfigMissingError;
       expect(e.message).toMatch(/CONFIG_MISSING/);
