@@ -263,6 +263,7 @@ function createPreviewServer(options: PreviewServerOptions = {}): http.Server {
           const record = createRunRecord({
             runLabel: upload.runLabel,
             pdfFileName: upload.originalFileName,
+            pdfFilePath: upload.pdfFilePath,
             outputDir: config.OUTPUT_DIR,
             extractionFields: upload.extractionFields,
             promptSnapshot,
@@ -324,6 +325,29 @@ function createPreviewServer(options: PreviewServerOptions = {}): http.Server {
       return;
     }
 
+    // ── GET /runs/:runId/source-pdf ──────────────────────────────────────
+    const sourcePdfMatch = url.pathname.match(/^\/runs\/([^/]+)\/source-pdf$/);
+    if (req.method === 'GET' && sourcePdfMatch) {
+      const record = getRunRecord(sourcePdfMatch[1]);
+      if (
+        !record ||
+        !record.pdfFilePath ||
+        !record.outputDir ||
+        !isPathInsideDirectory(record.pdfFilePath, path.join(record.outputDir, 'uploads')) ||
+        !fs.existsSync(record.pdfFilePath)
+      ) {
+        writeHtml(res, 404, renderRunErrorHtml('PDF Not Found', 'Source PDF not available for this run.'));
+        return;
+      }
+      const body = fs.readFileSync(record.pdfFilePath);
+      res.writeHead(200, {
+        'Content-Type': 'application/pdf',
+        'Content-Length': body.length,
+      });
+      res.end(body);
+      return;
+    }
+
     // ── GET /runs/:runId, /runs/:runId/summary, /runs/:runId/debug.md ───
     const runMatch = url.pathname.match(/^\/runs\/([^/]+)(?:\/(summary|debug\.md))?$/);
     if (req.method === 'GET' && runMatch) {
@@ -352,11 +376,15 @@ function createPreviewServer(options: PreviewServerOptions = {}): http.Server {
           writeHtml(res, 200, renderRunStatusHtml(record));
           return;
         }
+        const sourcePdfUrl = record.pdfFilePath ? `/runs/${record.id}/source-pdf` : undefined;
         writeHtml(
           res,
           200,
           addDebugLinkToSummaryHtml(
-            renderSummaryHtml(withPreviewUrls(record.summary, record.id, record.outputDir)),
+            renderSummaryHtml(
+              withPreviewUrls(record.summary, record.id, record.outputDir),
+              { sourcePdfUrl },
+            ),
             record.id,
           ),
         );

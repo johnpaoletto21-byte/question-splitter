@@ -160,9 +160,9 @@ describe('preview server real run routes', () => {
     expect(summaryRes.body).toContain('https://drive.google.com/file/d/test/view');
     expect(summaryRes.body).toContain('data-testid="summary-row-preview-q_0001"');
     expect(summaryRes.body).toContain(`${post.headers.location}/preview/q_0001`);
-    expect(summaryRes.body).toContain('data-testid="summary-row-preview-q_outside">—</span>');
-    expect(summaryRes.body).toContain('data-testid="summary-field-header-has_diagram"');
-    expect(summaryRes.body).toContain('data-testid="summary-row-field-q_0001-has_diagram">Yes');
+    expect(summaryRes.body).toContain('data-testid="summary-row-preview-q_outside"');
+    expect(summaryRes.body).toContain('data-testid="summary-row-field-q_0001-has_diagram"');
+    expect(summaryRes.body).toContain('Yes');
 
     const previewRes = await request(port, 'GET', `${post.headers.location}/preview/q_0001`);
     expect(previewRes.statusCode).toBe(200);
@@ -214,6 +214,100 @@ describe('preview server real run routes', () => {
     expect(debugRes.body).toContain('## Prompt Snapshot');
     expect(debugRes.body).toContain('Browser segmenter prompt');
     expect(debugRes.body).toContain('Browser localizer prompt');
+  });
+
+  it('serves the source PDF at /runs/:runId/source-pdf', async () => {
+    const uploadsDir = path.join(previewDir, 'uploads');
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    const fakePdfPath = path.join(uploadsDir, '123_exam.pdf');
+    fs.writeFileSync(fakePdfPath, Buffer.from('%PDF-fake'));
+
+    const pdfServer = createPreviewServer({
+      loadConfigFn: () => ({ ...config, OUTPUT_DIR: previewDir }),
+      parsePdfUploadFn: async () => ({
+        pdfFilePath: fakePdfPath,
+        originalFileName: 'exam.pdf',
+        runLabel: 'PDF test',
+        extractionFields: [],
+      }),
+      runFullPipelineFn: async () => summary,
+    });
+    const pdfPort = await listen(pdfServer);
+    try {
+      const post = await request(pdfPort, 'POST', '/run', '--test--\r\n');
+      expect(post.statusCode).toBe(303);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      const pdfRes = await request(pdfPort, 'GET', `${post.headers.location}/source-pdf`);
+      expect(pdfRes.statusCode).toBe(200);
+      expect(pdfRes.headers['content-type']).toBe('application/pdf');
+      expect(pdfRes.body).toBe('%PDF-fake');
+    } finally {
+      await new Promise<void>((resolve) => pdfServer.close(() => resolve()));
+    }
+  });
+
+  it('returns 404 for source-pdf when no PDF path stored', async () => {
+    const res = await request(port, 'GET', '/runs/nonexistent/source-pdf');
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('returns 404 for source-pdf with path traversal attempt', async () => {
+    const uploadsDir = path.join(previewDir, 'uploads');
+    fs.mkdirSync(uploadsDir, { recursive: true });
+
+    const traversalServer = createPreviewServer({
+      loadConfigFn: () => ({ ...config, OUTPUT_DIR: previewDir }),
+      parsePdfUploadFn: async () => ({
+        pdfFilePath: path.join(os.homedir(), 'malicious.pdf'),
+        originalFileName: 'malicious.pdf',
+        runLabel: 'Traversal test',
+        extractionFields: [],
+      }),
+      runFullPipelineFn: async () => summary,
+    });
+    const traversalPort = await listen(traversalServer);
+    try {
+      const post = await request(traversalPort, 'POST', '/run', '--test--\r\n');
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      const pdfRes = await request(traversalPort, 'GET', `${post.headers.location}/source-pdf`);
+      expect(pdfRes.statusCode).toBe(404);
+    } finally {
+      await new Promise<void>((resolve) => traversalServer.close(() => resolve()));
+    }
+  });
+
+  it('renders split-view summary when source PDF is available', async () => {
+    const uploadsDir = path.join(previewDir, 'uploads');
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    const fakePdfPath = path.join(uploadsDir, '123_exam.pdf');
+    fs.writeFileSync(fakePdfPath, Buffer.from('%PDF-fake'));
+
+    const splitServer = createPreviewServer({
+      loadConfigFn: () => ({ ...config, OUTPUT_DIR: previewDir }),
+      parsePdfUploadFn: async () => ({
+        pdfFilePath: fakePdfPath,
+        originalFileName: 'exam.pdf',
+        runLabel: 'Split test',
+        extractionFields: [],
+      }),
+      runFullPipelineFn: async () => summary,
+    });
+    const splitPort = await listen(splitServer);
+    try {
+      const post = await request(splitPort, 'POST', '/run', '--test--\r\n');
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      const summaryRes = await request(splitPort, 'GET', `${post.headers.location}/summary`);
+      expect(summaryRes.statusCode).toBe(200);
+      expect(summaryRes.body).toContain('data-testid="left-panel"');
+      expect(summaryRes.body).toContain('data-testid="right-panel"');
+      expect(summaryRes.body).toContain('data-testid="source-pdf-embed"');
+      expect(summaryRes.body).toContain('/source-pdf');
+    } finally {
+      await new Promise<void>((resolve) => splitServer.close(() => resolve()));
+    }
   });
 
   it('renders structured pipeline failures instead of [object Object]', async () => {
