@@ -62,16 +62,23 @@ function assertRawShape(raw) {
  * @returns        Validated, normalized SegmentationResult.
  * @throws         Error or SegmentationValidationError on invalid response.
  */
-function parseGeminiSegmentationResponse(raw, runId, maxRegionsPerTarget = 2) {
+function parseGeminiSegmentationResponse(raw, runId, maxRegionsPerTarget = 2, options = {}) {
     assertRawShape(raw);
     // Assign sequential target_id values in the order Gemini returned them
     // (reading order). The ID encodes position so downstream sorting is stable.
+    const offset = options.targetIdOffset ?? 0;
     const targets = raw.targets.map((t, i) => {
         const target = {
-            target_id: makeTargetId(i),
+            target_id: makeTargetId(offset + i),
             target_type: t.target_type,
             regions: t.regions,
         };
+        if (typeof t.finish_page_number === 'number') {
+            target['finish_page_number'] = t.finish_page_number;
+        }
+        if (t.extraction_fields !== undefined) {
+            target['extraction_fields'] = t.extraction_fields;
+        }
         if (typeof t.review_comment === 'string') {
             target['review_comment'] = t.review_comment;
         }
@@ -79,6 +86,9 @@ function parseGeminiSegmentationResponse(raw, runId, maxRegionsPerTarget = 2) {
     });
     const normalized = { run_id: runId, targets };
     // Run full contract validation (enforces INV-2, INV-3, INV-4 constraints).
-    return (0, validation_1.validateSegmentationResult)(normalized, maxRegionsPerTarget);
+    return (0, validation_1.validateSegmentationResult)(normalized, maxRegionsPerTarget, {
+        extractionFields: options.extractionFields,
+        focusPageNumber: options.focusPageNumber,
+    });
 }
 //# sourceMappingURL=parser.js.map

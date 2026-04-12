@@ -93,6 +93,33 @@ function makeSummaryWithFinalResults() {
   return state;
 }
 
+function makeReviewSummary() {
+  return {
+    run_id: 'run_review_table',
+    extraction_fields: [{
+      key: 'has_diagram',
+      label: 'Has Diagram',
+      description: 'true if the question includes a diagram',
+      type: 'boolean' as const,
+    }],
+    targets: [{
+      target_id: 'q_0001',
+      target_type: 'question',
+      page_numbers: [1],
+      finish_page_number: 1,
+      extraction_fields: { has_diagram: true },
+      agent1_status: 'needs_review' as const,
+      review_comment: 'Agent 1: diagram boundary uncertain',
+      agent2_status: 'needs_review' as const,
+      agent2_review_comment: 'Agent 2: crop touches lower edge',
+      final_status: 'ok' as const,
+      drive_url: 'https://drive.google.com/file/d/abc123/view',
+      local_output_path: '/tmp/q_0001.png',
+      preview_url: '/runs/local_run_test/preview/q_0001',
+    }],
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Tests — structure
 // ---------------------------------------------------------------------------
@@ -165,6 +192,19 @@ describe('renderSummaryHtml — per-row selectors', () => {
     const html = renderSummaryHtml(state);
     expect(html).toContain('data-testid="summary-row-drive-url-q_0001"');
     expect(html).toContain('data-testid="summary-row-drive-url-q_0002"');
+  });
+
+  it('renders per-row local preview cell with data-testid="summary-row-preview-{target_id}"', () => {
+    const html = renderSummaryHtml(makeReviewSummary());
+    expect(html).toContain('data-testid="summary-row-preview-q_0001"');
+    expect(html).toContain('src="/runs/local_run_test/preview/q_0001"');
+  });
+
+  it('renders per-row AI comments cell with data-testid="summary-row-ai-comments-{target_id}"', () => {
+    const html = renderSummaryHtml(makeReviewSummary());
+    expect(html).toContain('data-testid="summary-row-ai-comments-q_0001"');
+    expect(html).toContain('Agent 1: diagram boundary uncertain');
+    expect(html).toContain('Agent 2: crop touches lower edge');
   });
 
   it('renders per-row Agent 1 review comment with data-testid="summary-row-review-comment-{id}"', () => {
@@ -268,6 +308,12 @@ describe('renderSummaryHtml — content visibility', () => {
     const state = buildRunSummaryFromSegmentation(makeSegResult());
     const html = renderSummaryHtml(state);
     expect(html).toContain('>pending<');
+  });
+
+  it('renders dynamic boolean extraction field columns in configured order', () => {
+    const html = renderSummaryHtml(makeReviewSummary());
+    expect(html).toContain('data-testid="summary-field-header-has_diagram">Has Diagram</th>');
+    expect(html).toContain('data-testid="summary-row-field-q_0001-has_diagram">Yes</td>');
   });
 });
 

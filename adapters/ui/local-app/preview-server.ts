@@ -24,6 +24,8 @@
  */
 
 import * as http from 'http';
+import * as fs from 'fs';
+import * as path from 'path';
 import { renderSummaryHtml } from './summary-renderer';
 import { PREVIEW_FIXTURE } from './preview-fixture';
 import { renderPromptEditorHtml } from './prompt-editor';
@@ -40,6 +42,7 @@ import {
 import { parsePdfUpload, MAX_UPLOAD_BYTES } from './upload-handler';
 import {
   getPromptConfig,
+  capturePromptSnapshot,
   setAgent1Prompt,
   setAgent2Prompt,
 } from '../../../core/prompt-config-store/store';
@@ -47,6 +50,7 @@ import { loadConfig } from '../../config/local-config/loader';
 import { ConfigMissingError, LocalConfig } from '../../config/local-config/types';
 import { runFullPipeline } from '../../run-pipeline';
 import type { RunFullPipelineInput } from '../../run-pipeline';
+import type { RunSummaryState } from '../../../core/run-summary/types';
 
 const PREVIEW_PORT = process.env['PREVIEW_PORT']
   ? parseInt(process.env['PREVIEW_PORT'], 10)
@@ -93,6 +97,15 @@ function writeMarkdown(res: http.ServerResponse, filename: string, markdown: str
   res.end(body);
 }
 
+function writePng(res: http.ServerResponse, filePath: string): void {
+  const body = fs.readFileSync(filePath);
+  res.writeHead(200, {
+    'Content-Type': 'image/png',
+    'Content-Length': body.length,
+  });
+  res.end(body);
+}
+
 function redirect(res: http.ServerResponse, location: string): void {
   res.writeHead(303, { Location: location });
   res.end();
@@ -112,6 +125,16 @@ function formatUnknownError(err: unknown): string {
   }
 }
 
+function extractFailureContext(err: unknown): unknown {
+  if (typeof err !== 'object' || err === null) {
+    return undefined;
+  }
+  const record = err as Record<string, unknown>;
+  return record['segmentationWindow'] !== undefined
+    ? { segmentationWindow: record['segmentationWindow'] }
+    : undefined;
+}
+
 function tryLoadConfigForDebug(loadConfigFn: typeof loadConfig): {
   config?: LocalConfig;
   configError?: string;
@@ -129,6 +152,31 @@ function addDebugLinkToSummaryHtml(html: string, runId: string): string {
     `  <div class="nav"><a href="/runs/${runId}/debug.md" data-testid="summary-debug-download-link" download>Download Debug Package (.md)</a></div>`,
   ].join('\n');
   return html.replace('<body>', link);
+}
+
+function withPreviewUrls(
+  summary: RunSummaryState,
+  localRunId: string,
+  outputDir: string | undefined,
+): RunSummaryState {
+  return {
+    ...summary,
+    targets: summary.targets.map((target) => ({
+      ...target,
+      ...(target.local_output_path !== undefined &&
+        outputDir !== undefined &&
+        isPathInsideDirectory(target.local_output_path, outputDir)
+        ? { preview_url: `/runs/${localRunId}/preview/${encodeURIComponent(target.target_id)}` }
+        : {}),
+    })),
+  };
+}
+
+function isPathInsideDirectory(filePath: string, directory: string): boolean {
+  const resolvedFile = path.resolve(filePath);
+  const resolvedDirectory = path.resolve(directory);
+  return resolvedFile === resolvedDirectory ||
+    resolvedFile.startsWith(`${resolvedDirectory}${path.sep}`);
 }
 
 function loadConfigForForm(loadConfigFn: typeof loadConfig): {
@@ -157,7 +205,7 @@ function startRun(recordId: string, input: RunFullPipelineInput, runFullPipeline
     .catch((err: unknown) => {
       const message = formatUnknownError(err);
       appendRunLog(recordId, 'app', `Run failed: ${message}`);
-      markRunFailed(recordId, message);
+      markRunFailed(recordId, message, extractFailureContext(err));
     });
 }
 
@@ -211,17 +259,30 @@ function createPreviewServer(options: PreviewServerOptions = {}): http.Server {
 
       parsePdfUploadFn(req, config.OUTPUT_DIR)
         .then((upload) => {
+          const promptSnapshot = capturePromptSnapshot();
           const record = createRunRecord({
             runLabel: upload.runLabel,
             pdfFileName: upload.originalFileName,
+            outputDir: config.OUTPUT_DIR,
+            extractionFields: upload.extractionFields,
+            promptSnapshot,
           });
           appendRunLog(record.id, 'upload', `Uploaded ${upload.originalFileName}`);
+          if (upload.extractionFields.length > 0) {
+            appendRunLog(
+              record.id,
+              'upload',
+              `Configured extraction fields: ${upload.extractionFields.map((f) => f.key).join(', ')}`,
+            );
+          }
           startRun(
             record.id,
             {
               pdfFilePaths: [upload.pdfFilePath],
               runLabel: upload.runLabel,
               config,
+              extractionFields: upload.extractionFields,
+              promptSnapshot,
               onLog: (event) => appendRunLog(
                 record.id,
                 event.stage,
@@ -240,6 +301,26 @@ function createPreviewServer(options: PreviewServerOptions = {}): http.Server {
             : 400;
           writeHtml(res, statusCode, renderRunErrorHtml('Upload Error', message));
         });
+      return;
+    }
+
+    // ── GET /runs/:runId/preview/:targetId ──────────────────────────────
+    const previewMatch = url.pathname.match(/^\/runs\/([^/]+)\/preview\/([^/]+)$/);
+    if (req.method === 'GET' && previewMatch) {
+      const record = getRunRecord(previewMatch[1]);
+      const targetId = decodeURIComponent(previewMatch[2]);
+      const target = record?.summary?.targets.find((entry) => entry.target_id === targetId);
+      if (
+        !record ||
+        !target?.local_output_path ||
+        !record.outputDir ||
+        !isPathInsideDirectory(target.local_output_path, record.outputDir) ||
+        !fs.existsSync(target.local_output_path)
+      ) {
+        writeHtml(res, 404, renderRunErrorHtml('Preview Not Found', `No preview found for ${targetId}`));
+        return;
+      }
+      writePng(res, target.local_output_path);
       return;
     }
 
@@ -271,7 +352,14 @@ function createPreviewServer(options: PreviewServerOptions = {}): http.Server {
           writeHtml(res, 200, renderRunStatusHtml(record));
           return;
         }
-        writeHtml(res, 200, addDebugLinkToSummaryHtml(renderSummaryHtml(record.summary), record.id));
+        writeHtml(
+          res,
+          200,
+          addDebugLinkToSummaryHtml(
+            renderSummaryHtml(withPreviewUrls(record.summary, record.id, record.outputDir)),
+            record.id,
+          ),
+        );
         return;
       }
 

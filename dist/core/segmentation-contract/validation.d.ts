@@ -11,6 +11,12 @@
  *   - Target order is preserved exactly as received.
  */
 import type { SegmentationRegion, SegmentationResult, SegmentationTarget } from './types';
+import type { ExtractionFieldDefinition } from '../extraction-fields';
+export interface SegmentationValidationOptions {
+    extractionFields?: ReadonlyArray<ExtractionFieldDefinition>;
+    focusPageNumber?: number;
+    requireFinishPage?: boolean;
+}
 /**
  * Validates a single raw region value.
  * Enforces: page_number is a positive integer, no bbox_1000 present.
@@ -23,7 +29,7 @@ export declare function validateSegmentationRegion(raw: unknown, regionIndex: nu
  * @param targetIndex      Position in the targets array (for error messages).
  * @param maxRegions       Profile-driven max (default 2 per INV-3).
  */
-export declare function validateSegmentationTarget(raw: unknown, targetIndex: number, maxRegions: number): SegmentationTarget;
+export declare function validateSegmentationTarget(raw: unknown, targetIndex: number, maxRegions: number, options?: SegmentationValidationOptions): SegmentationTarget;
 /**
  * Validates a complete raw segmentation result.
  *
@@ -32,5 +38,5 @@ export declare function validateSegmentationTarget(raw: unknown, targetIndex: nu
  * @returns                    A typed, validated SegmentationResult.
  * @throws                     SegmentationValidationError on any schema violation.
  */
-export declare function validateSegmentationResult(raw: unknown, maxRegionsPerTarget?: number): SegmentationResult;
+export declare function validateSegmentationResult(raw: unknown, maxRegionsPerTarget?: number, options?: SegmentationValidationOptions): SegmentationResult;
 //# sourceMappingURL=validation.d.ts.map

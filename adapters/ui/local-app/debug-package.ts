@@ -45,9 +45,12 @@ export function renderRunDebugMarkdown(input: {
     status: record.status,
     runLabel: record.runLabel,
     pdfFileName: record.pdfFileName,
+    outputDir: record.outputDir,
+    extractionFields: record.extractionFields,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     error: record.error,
+    failureContext: record.failureContext,
   }));
   lines.push('');
 
@@ -56,6 +59,10 @@ export function renderRunDebugMarkdown(input: {
     agent1Segmenter: DEFAULT_GEMINI_SEGMENTER_MODEL,
     agent2Localizer: DEFAULT_GEMINI_LOCALIZER_MODEL,
   }));
+  lines.push('');
+
+  lines.push(`## Prompt Snapshot`);
+  lines.push(record.promptSnapshot ? fencedJson(record.promptSnapshot) : 'No prompt snapshot captured for this run.');
   lines.push('');
 
   lines.push(`## Config`);

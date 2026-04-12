@@ -18,6 +18,7 @@
  *   - Per-row container:   data-testid="summary-row-{target_id}"
  *   - Per-row status:      data-testid="summary-row-status-{target_id}"
  *   - Drive URL anchor:    data-testid="summary-row-drive-url-{target_id}"
+ *   - AI comments:        data-testid="summary-row-ai-comments-{target_id}"
  *   - Agent 1 review note: data-testid="summary-row-review-comment-{target_id}"
  *   - Agent 2 review note: data-testid="summary-row-agent2-review-comment-{target_id}"
  *   - Failure code:        data-testid="summary-row-failure-code-{target_id}"
@@ -37,12 +38,22 @@ function esc(raw: string): string {
     .replace(/"/g, '&quot;');
 }
 
+function labelComment(label: 'Agent 1' | 'Agent 2', comment: string | undefined): string {
+  if (comment === undefined) {
+    return '—';
+  }
+  const trimmed = comment.trim();
+  return trimmed.toLowerCase().startsWith(`${label.toLowerCase()}:`)
+    ? trimmed
+    : `${label}: ${trimmed}`;
+}
+
 /**
  * Renders a single summary row for one target entry.
  *
  * Per INV-8: this is always called for every entry; the caller must not skip failed rows.
  */
-function renderTargetRow(entry: RunSummaryTargetEntry): string {
+function renderTargetRow(entry: RunSummaryTargetEntry, state: RunSummaryState): string {
   const id = entry.target_id;
 
   // Status badge — shows final pipeline outcome, or 'pending' if not yet set.
@@ -55,15 +66,31 @@ function renderTargetRow(entry: RunSummaryTargetEntry): string {
     ? `<a href="${esc(entry.drive_url)}" data-testid="summary-row-drive-url-${esc(id)}" target="_blank" rel="noopener noreferrer">Open in Drive</a>`
     : `<span data-testid="summary-row-drive-url-${esc(id)}">—</span>`;
 
-  // Agent 1 review comment (INV-4: visible in UI).
-  const agent1Comment = entry.review_comment
-    ? `<span data-testid="summary-row-review-comment-${esc(id)}">${esc(entry.review_comment)}</span>`
-    : `<span data-testid="summary-row-review-comment-${esc(id)}">—</span>`;
+  const previewCell = entry.preview_url
+    ? `<img src="${esc(entry.preview_url)}" alt="Preview for ${esc(id)}" data-testid="summary-row-preview-${esc(id)}">`
+    : `<span data-testid="summary-row-preview-${esc(id)}">—</span>`;
 
-  // Agent 2 review comment (INV-4: visible in UI).
-  const agent2Comment = entry.agent2_review_comment
-    ? `<span data-testid="summary-row-agent2-review-comment-${esc(id)}">${esc(entry.agent2_review_comment)}</span>`
-    : `<span data-testid="summary-row-agent2-review-comment-${esc(id)}">—</span>`;
+  const agent1Comment = labelComment('Agent 1', entry.review_comment);
+  const agent2Comment = labelComment('Agent 2', entry.agent2_review_comment);
+  const comments = [
+    entry.review_comment ? agent1Comment : '',
+    entry.agent2_review_comment ? agent2Comment : '',
+  ].filter((value) => value !== '').join('\n');
+  const aiComments = comments
+    ? `<span data-testid="summary-row-ai-comments-${esc(id)}">${esc(comments)}</span>`
+    : `<span data-testid="summary-row-ai-comments-${esc(id)}">—</span>`;
+  const commentCompat = [
+    `<span class="comment-compat" data-testid="summary-row-review-comment-${esc(id)}">${esc(agent1Comment)}</span>`,
+    `<span class="comment-compat" data-testid="summary-row-agent2-review-comment-${esc(id)}">${esc(agent2Comment)}</span>`,
+  ].join('');
+
+  const customCells = (state.extraction_fields ?? [])
+    .map((field) => {
+      const value = entry.extraction_fields?.[field.key];
+      const label = value === undefined ? '—' : value ? 'Yes' : 'No';
+      return `<td data-testid="summary-row-field-${esc(id)}-${esc(field.key)}">${esc(label)}</td>`;
+    })
+    .join('');
 
   // Failure details — only visible when final_status = 'failed'.
   const failureCode = entry.failure_code
@@ -78,10 +105,12 @@ function renderTargetRow(entry: RunSummaryTargetEntry): string {
   <tr data-testid="summary-row-${esc(id)}">
     <td>${esc(id)}</td>
     <td>${esc(entry.target_type)}</td>
-    <td>${entry.page_numbers.join(', ')}</td>${statusRow}
+    <td>${entry.page_numbers.join(', ')}</td>
+    <td>${entry.finish_page_number ?? '—'}</td>${statusRow}
+    <td>${previewCell}</td>
     <td>${driveCell}</td>
-    <td>${agent1Comment}</td>
-    <td>${agent2Comment}</td>
+    ${customCells}
+    <td>${aiComments}${commentCompat}</td>
     <td>${failureCode}</td>
     <td>${failureMessage}</td>
   </tr>`;
@@ -98,7 +127,10 @@ function renderTargetRow(entry: RunSummaryTargetEntry): string {
  *               in a browser for manual or automated review.
  */
 export function renderSummaryHtml(state: RunSummaryState): string {
-  const rows = state.targets.map(renderTargetRow).join('');
+  const rows = state.targets.map((entry) => renderTargetRow(entry, state)).join('');
+  const customHeaders = (state.extraction_fields ?? [])
+    .map((field) => `<th data-testid="summary-field-header-${esc(field.key)}">${esc(field.label)}</th>`)
+    .join('');
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -113,8 +145,10 @@ export function renderSummaryHtml(state: RunSummaryState): string {
     th, td { border: 1px solid #ccc; padding: 0.4rem 0.7rem; text-align: left; font-size: 0.85rem; }
     th { background: #f0f0f0; }
     tr[data-testid]:hover { background: #fafafa; }
+    img[data-testid^="summary-row-preview-"] { max-width: 360px; max-height: 180px; display: block; background: #fff; }
     a { color: #0066cc; }
     .nav { margin-bottom: 1.2rem; font-size: 0.875rem; }
+    .comment-compat { display: none; }
   </style>
 </head>
 <body>
@@ -129,10 +163,12 @@ export function renderSummaryHtml(state: RunSummaryState): string {
         <th>Target ID</th>
         <th>Type</th>
         <th>Pages</th>
+        <th>Finish Page</th>
         <th>Status</th>
+        <th>Preview</th>
         <th>Drive URL</th>
-        <th>Agent 1 Note</th>
-        <th>Agent 2 Note</th>
+        ${customHeaders}
+        <th>AI Comments</th>
         <th>Failure Code</th>
         <th>Failure Message</th>
       </tr>

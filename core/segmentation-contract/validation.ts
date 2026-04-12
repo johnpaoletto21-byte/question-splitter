@@ -17,6 +17,13 @@ import type {
   SegmentationTarget,
   SegmentationValidationError,
 } from './types';
+import type { ExtractionFieldDefinition } from '../extraction-fields';
+
+export interface SegmentationValidationOptions {
+  extractionFields?: ReadonlyArray<ExtractionFieldDefinition>;
+  focusPageNumber?: number;
+  requireFinishPage?: boolean;
+}
 
 // ---------------------------------------------------------------------------
 // Internal type guards
@@ -36,6 +43,136 @@ function isObject(v: unknown): v is Record<string, unknown> {
 
 function isArray(v: unknown): v is unknown[] {
   return Array.isArray(v);
+}
+
+function validateExtractionFields(
+  raw: Record<string, unknown>,
+  targetIndex: number,
+  definitions: ReadonlyArray<ExtractionFieldDefinition>,
+): Record<string, boolean> | undefined {
+  const rawValue = raw['extraction_fields'];
+
+  if (definitions.length === 0) {
+    if (rawValue === undefined) {
+      return undefined;
+    }
+    if (!isObject(rawValue)) {
+      throw {
+        code: 'SEGMENTATION_SCHEMA_INVALID',
+        message: `targets[${targetIndex}].extraction_fields must be an object when present`,
+      } as SegmentationValidationError;
+    }
+    const values: Record<string, boolean> = {};
+    for (const [key, value] of Object.entries(rawValue)) {
+      if (typeof value !== 'boolean') {
+        throw {
+          code: 'SEGMENTATION_SCHEMA_INVALID',
+          message: `targets[${targetIndex}].extraction_fields.${key} must be boolean`,
+        } as SegmentationValidationError;
+      }
+      values[key] = value;
+    }
+    return values;
+  }
+
+  if (!isObject(rawValue)) {
+    throw {
+      code: 'SEGMENTATION_SCHEMA_INVALID',
+      message: `targets[${targetIndex}].extraction_fields must be an object`,
+    } as SegmentationValidationError;
+  }
+
+  const allowed = new Set(definitions.map((field) => field.key));
+  const values: Record<string, boolean> = {};
+
+  for (const field of definitions) {
+    if (typeof rawValue[field.key] !== 'boolean') {
+      throw {
+        code: 'SEGMENTATION_SCHEMA_INVALID',
+        message: `targets[${targetIndex}].extraction_fields.${field.key} must be boolean`,
+      } as SegmentationValidationError;
+    }
+    values[field.key] = rawValue[field.key] as boolean;
+  }
+
+  for (const key of Object.keys(rawValue)) {
+    if (!allowed.has(key)) {
+      throw {
+        code: 'SEGMENTATION_SCHEMA_INVALID',
+        message: `targets[${targetIndex}].extraction_fields.${key} was not configured for this run`,
+      } as SegmentationValidationError;
+    }
+  }
+
+  return values;
+}
+
+function validateFinishPage(
+  raw: Record<string, unknown>,
+  targetIndex: number,
+  regions: SegmentationRegion[],
+  options: SegmentationValidationOptions,
+): number | undefined {
+  const rawFinishPage = raw['finish_page_number'];
+  const mustHaveFinishPage = options.requireFinishPage === true ||
+    options.focusPageNumber !== undefined;
+
+  if (rawFinishPage === undefined) {
+    if (!mustHaveFinishPage) {
+      return undefined;
+    }
+    throw {
+      code: 'SEGMENTATION_SCHEMA_INVALID',
+      message: `targets[${targetIndex}].finish_page_number is required`,
+    } as SegmentationValidationError;
+  }
+
+  if (
+    !isNumber(rawFinishPage) ||
+    !Number.isInteger(rawFinishPage) ||
+    (rawFinishPage as number) < 1
+  ) {
+    throw {
+      code: 'SEGMENTATION_SCHEMA_INVALID',
+      message: `targets[${targetIndex}].finish_page_number must be a positive integer`,
+    } as SegmentationValidationError;
+  }
+
+  const finishPage = rawFinishPage as number;
+  if (options.focusPageNumber !== undefined && finishPage !== options.focusPageNumber) {
+    throw {
+      code: 'SEGMENTATION_SCHEMA_INVALID',
+      message:
+        `targets[${targetIndex}].finish_page_number must equal focus page ` +
+        `${options.focusPageNumber}, received ${finishPage}`,
+    } as SegmentationValidationError;
+  }
+
+  const maxRegionPage = Math.max(...regions.map((region) => region.page_number));
+  if (maxRegionPage !== finishPage) {
+    throw {
+      code: 'SEGMENTATION_SCHEMA_INVALID',
+      message:
+        `targets[${targetIndex}] max region page ${maxRegionPage} must equal ` +
+        `finish_page_number ${finishPage}`,
+    } as SegmentationValidationError;
+  }
+
+  if (options.focusPageNumber !== undefined) {
+    const allowedPages = new Set([options.focusPageNumber, options.focusPageNumber - 1]);
+    for (const region of regions) {
+      if (!allowedPages.has(region.page_number)) {
+        throw {
+          code: 'SEGMENTATION_SCHEMA_INVALID',
+          message:
+            `targets[${targetIndex}].regions contains page ${region.page_number}; ` +
+            `focus page ${options.focusPageNumber} only allows current or previous page`,
+        } as SegmentationValidationError;
+      }
+    }
+  }
+
+  return finishPage;
 }
 
 // ---------------------------------------------------------------------------
@@ -98,6 +235,7 @@ export function validateSegmentationTarget(
   raw: unknown,
   targetIndex: number,
   maxRegions: number,
+  options: SegmentationValidationOptions = {},
 ): SegmentationTarget {
   if (!isObject(raw)) {
     throw {
@@ -149,6 +287,13 @@ export function validateSegmentationTarget(
     validateSegmentationRegion(r, ri, targetIndex),
   );
 
+  const finishPage = validateFinishPage(raw, targetIndex, regions, options);
+  const extractionFields = validateExtractionFields(
+    raw,
+    targetIndex,
+    options.extractionFields ?? [],
+  );
+
   // Optional review_comment
   const rawComment = 'review_comment' in raw ? raw['review_comment'] : undefined;
   if (rawComment !== undefined && !isString(rawComment)) {
@@ -163,6 +308,14 @@ export function validateSegmentationTarget(
     target_type: raw['target_type'] as string,
     regions,
   };
+
+  if (finishPage !== undefined) {
+    target.finish_page_number = finishPage;
+  }
+
+  if (extractionFields !== undefined) {
+    target.extraction_fields = extractionFields;
+  }
 
   if (typeof rawComment === 'string') {
     target.review_comment = rawComment;
@@ -186,6 +339,7 @@ export function validateSegmentationTarget(
 export function validateSegmentationResult(
   raw: unknown,
   maxRegionsPerTarget: number = 2,
+  options: SegmentationValidationOptions = {},
 ): SegmentationResult {
   if (!isObject(raw)) {
     throw {
@@ -209,7 +363,7 @@ export function validateSegmentationResult(
   }
 
   const targets = (raw['targets'] as unknown[]).map((t, i) =>
-    validateSegmentationTarget(t, i, maxRegionsPerTarget),
+    validateSegmentationTarget(t, i, maxRegionsPerTarget, options),
   );
 
   return {

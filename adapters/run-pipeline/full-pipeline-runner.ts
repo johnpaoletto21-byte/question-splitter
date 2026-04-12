@@ -15,7 +15,6 @@ import {
   bootstrapRun,
   renderAllSources,
   runSegmentationStep,
-  runLocalizationStep,
   runCropStep,
   runCompositionStep,
   runUploadStep,
@@ -28,12 +27,23 @@ import type {
   ImageStackerFn,
   DriveUploaderFn,
 } from '../../core/run-orchestrator';
+import type { LocalizationResult } from '../../core/localization-contract/types';
+import type { SegmentationResult } from '../../core/segmentation-contract/types';
 import {
   buildRunSummaryFromSegmentation,
   applyLocalizationToSummary,
   applyFinalResultsToSummary,
 } from '../../core/run-summary/summary';
 import type { RunSummaryState } from '../../core/run-summary/types';
+import type { FinalResultRow } from '../../core/result-model/types';
+import type { PromptSnapshot } from '../../core/prompt-config-store/types';
+import type { ExtractionFieldDefinition } from '../../core/extraction-fields';
+import {
+  buildSegmentationPageWindows,
+  getAllowedSegmentationRegionPageNumbers,
+  mergeWindowedSegmentationResults,
+  selectLocalizationContextPages,
+} from './page-windows';
 
 export interface PipelineLogEvent {
   stage: string;
@@ -45,6 +55,8 @@ export interface RunFullPipelineInput {
   pdfFilePaths: string[];
   runLabel?: string;
   config: LocalConfig;
+  extractionFields?: ExtractionFieldDefinition[];
+  promptSnapshot?: PromptSnapshot;
   onLog?: (event: PipelineLogEvent) => void;
 }
 
@@ -65,6 +77,31 @@ function emit(
   onLog?.({ stage, message, timestamp: new Date().toISOString() });
 }
 
+function formatUnknownError(err: unknown): string {
+  if (err instanceof Error) {
+    return err.message;
+  }
+  if (typeof err === 'string') {
+    return err;
+  }
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
+}
+
+function errorCode(err: unknown, fallback: string): string {
+  if (
+    typeof err === 'object' &&
+    err !== null &&
+    typeof (err as Record<string, unknown>)['code'] === 'string'
+  ) {
+    return (err as Record<string, string>)['code'];
+  }
+  return fallback;
+}
+
 /**
  * Runs the complete local pipeline and returns the final summary state.
  */
@@ -79,6 +116,7 @@ export async function runFullPipeline(
     pdfFilePaths: input.pdfFilePaths,
     config: input.config,
     runLabel: input.runLabel,
+    promptSnapshot: input.promptSnapshot,
   });
   emit(input.onLog, 'bootstrap', `Run ID: ${context.run_id}`);
 
@@ -86,30 +124,75 @@ export async function runFullPipeline(
   const rendered = await renderAllSources(context, deps.renderer ?? renderPdfSource);
   emit(input.onLog, 'render', `Rendered ${rendered.preparedPages.length} page image(s)`);
 
+  const extractionFields = input.extractionFields ?? [];
   const segmenter = deps.segmenter ?? ((
     runId,
     pages,
     profile,
     promptSnapshot,
+    options,
   ) => segmentPages(
     runId,
     pages,
     profile,
     promptSnapshot,
     { apiKey: input.config.GEMINI_API_KEY },
+    undefined,
+    undefined,
+    options,
   ));
 
-  emit(input.onLog, 'segmentation', 'Running Agent 1 segmentation');
-  const segmentation = await runSegmentationStep(
-    rendered.run_id,
-    rendered.preparedPages,
-    rendered.activeProfile,
-    rendered.promptSnapshot.agent1Prompt,
-    segmenter,
-  );
+  emit(input.onLog, 'segmentation', 'Running Agent 1 segmentation in page windows');
+  const segmentationWindows = buildSegmentationPageWindows(rendered.preparedPages);
+  const windowResults: SegmentationResult[] = [];
+  for (const window of segmentationWindows) {
+    const allowedRegionPageNumbers = getAllowedSegmentationRegionPageNumbers(
+      window.focusPageNumber,
+    );
+    emit(
+      input.onLog,
+      'segmentation',
+      `Agent 1 focus page ${window.focusPageNumber} with pages ` +
+        `${window.pages.map((page) => page.page_number).join(', ')}; ` +
+        `allowed output region pages ${allowedRegionPageNumbers.join(', ')}`,
+    );
+    try {
+      windowResults.push(await runSegmentationStep(
+        rendered.run_id,
+        window.pages,
+        rendered.activeProfile,
+        rendered.promptSnapshot.agent1Prompt,
+        segmenter,
+        {
+          focusPageNumber: window.focusPageNumber,
+          allowedRegionPageNumbers,
+          extractionFields,
+        },
+      ));
+    } catch (err) {
+      const message = formatUnknownError(err);
+      const segmentationWindow = {
+        focusPageNumber: window.focusPageNumber,
+        pageNumbers: window.pages.map((page) => page.page_number),
+        allowedRegionPageNumbers,
+      };
+      emit(
+        input.onLog,
+        'segmentation',
+        `Agent 1 failed for focus page ${window.focusPageNumber}; ` +
+          `allowed output region pages ${allowedRegionPageNumbers.join(', ')}; ${message}`,
+      );
+      throw {
+        code: errorCode(err, 'SEGMENTATION_FAILED'),
+        message,
+        segmentationWindow,
+      };
+    }
+  }
+  const segmentation = mergeWindowedSegmentationResults(rendered.run_id, windowResults);
   emit(input.onLog, 'segmentation', `Agent 1 found ${segmentation.targets.length} target(s)`);
 
-  let summary = buildRunSummaryFromSegmentation(segmentation);
+  let summary = buildRunSummaryFromSegmentation(segmentation, extractionFields);
 
   const localizer = deps.localizer ?? ((
     runId,
@@ -127,18 +210,40 @@ export async function runFullPipeline(
   ));
 
   emit(input.onLog, 'localization', 'Running Agent 2 localization');
-  const localized = await runLocalizationStep(
-    rendered.run_id,
-    segmentation,
-    rendered.preparedPages,
-    rendered.activeProfile,
-    rendered.promptSnapshot.agent2Prompt,
-    localizer,
-  );
+  const localized: LocalizationResult[] = [];
+  const localizationFailureRows: FinalResultRow[] = [];
+  for (const target of segmentation.targets) {
+    try {
+      const result = await localizer(
+        rendered.run_id,
+        target,
+        selectLocalizationContextPages(target, rendered.preparedPages),
+        rendered.activeProfile,
+        rendered.promptSnapshot.agent2Prompt,
+      );
+      localized.push(result);
+      emit(input.onLog, 'localization', `Localized ${target.target_id}`);
+    } catch (err) {
+      const message = formatUnknownError(err);
+      emit(input.onLog, 'localization', `Localization failed for ${target.target_id}: ${message}`);
+      localizationFailureRows.push({
+        target_id: target.target_id,
+        source_pages: target.regions.map((r) => r.page_number),
+        output_file_name: '',
+        status: 'failed',
+        failure_code: errorCode(err, 'LOCALIZATION_FAILED'),
+        failure_message: message,
+      });
+    }
+  }
   for (const result of localized) {
     summary = applyLocalizationToSummary(summary, result);
   }
-  emit(input.onLog, 'localization', `Localized ${localized.length} target(s)`);
+  emit(
+    input.onLog,
+    'localization',
+    `Localized ${localized.length} target(s); ${localizationFailureRows.length} failed`,
+  );
 
   const cropExecutor = deps.cropExecutor ?? makeCanvasCropExecutor(input.config.OUTPUT_DIR);
   emit(input.onLog, 'crop', 'Cropping target regions');
@@ -174,7 +279,14 @@ export async function runFullPipeline(
   );
   emit(input.onLog, 'upload', 'Drive upload step finished');
 
-  summary = applyFinalResultsToSummary(summary, finalRows);
+  const finalRowMap = new Map<string, FinalResultRow>(
+    [...finalRows, ...localizationFailureRows].map((row) => [row.target_id, row]),
+  );
+  const orderedFinalRows = segmentation.targets
+    .map((target) => finalRowMap.get(target.target_id))
+    .filter((row): row is FinalResultRow => row !== undefined);
+
+  summary = applyFinalResultsToSummary(summary, orderedFinalRows);
   emit(input.onLog, 'summary', 'Summary ready');
   return summary;
 }

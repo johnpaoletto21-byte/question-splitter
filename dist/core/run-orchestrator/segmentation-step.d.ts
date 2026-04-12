@@ -17,6 +17,12 @@
 import type { PreparedPageImage } from '../source-model/types';
 import type { CropTargetProfile } from '../crop-target-profile/types';
 import type { SegmentationResult } from '../segmentation-contract/types';
+import type { ExtractionFieldDefinition } from '../extraction-fields';
+export interface SegmentationCallOptions {
+    extractionFields?: ReadonlyArray<ExtractionFieldDefinition>;
+    focusPageNumber?: number;
+    allowedRegionPageNumbers?: ReadonlyArray<number>;
+}
 /**
  * Contract for a segmenter function.
  * Implemented in `adapters/segmentation/gemini-segmenter`.
@@ -27,7 +33,7 @@ import type { SegmentationResult } from '../segmentation-contract/types';
  * @param profile        Active crop target profile.
  * @param promptSnapshot Session-scoped prompt override (empty = built-in).
  */
-export type Segmenter = (runId: string, pages: PreparedPageImage[], profile: CropTargetProfile, promptSnapshot: string) => Promise<SegmentationResult>;
+export type Segmenter = (runId: string, pages: PreparedPageImage[], profile: CropTargetProfile, promptSnapshot: string, options?: SegmentationCallOptions) => Promise<SegmentationResult>;
 /**
  * Runs the Agent 1 segmentation step.
  *
@@ -44,5 +50,5 @@ export type Segmenter = (runId: string, pages: PreparedPageImage[], profile: Cro
  * @returns              Normalized SegmentationResult; target order is authoritative.
  * @throws               Re-throws any error from the segmenter.
  */
-export declare function runSegmentationStep(runId: string, pages: PreparedPageImage[], profile: CropTargetProfile, promptSnapshot: string, segmenter: Segmenter): Promise<SegmentationResult>;
+export declare function runSegmentationStep(runId: string, pages: PreparedPageImage[], profile: CropTargetProfile, promptSnapshot: string, segmenter: Segmenter, options?: SegmentationCallOptions): Promise<SegmentationResult>;
 //# sourceMappingURL=segmentation-step.d.ts.map

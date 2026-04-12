@@ -6,6 +6,8 @@
 import type { LocalConfig } from '../config/local-config/types';
 import type { PageRenderer, Segmenter, Localizer, CropExecutor, ImageStackerFn, DriveUploaderFn } from '../../core/run-orchestrator';
 import type { RunSummaryState } from '../../core/run-summary/types';
+import type { PromptSnapshot } from '../../core/prompt-config-store/types';
+import type { ExtractionFieldDefinition } from '../../core/extraction-fields';
 export interface PipelineLogEvent {
     stage: string;
     message: string;
@@ -15,6 +17,8 @@ export interface RunFullPipelineInput {
     pdfFilePaths: string[];
     runLabel?: string;
     config: LocalConfig;
+    extractionFields?: ExtractionFieldDefinition[];
+    promptSnapshot?: PromptSnapshot;
     onLog?: (event: PipelineLogEvent) => void;
 }
 export interface RunFullPipelineDependencies {

@@ -13,6 +13,12 @@
  */
 import type { CropTargetProfile } from '../../../core/crop-target-profile/types';
 import type { PreparedPageImage } from '../../../core/source-model/types';
+import type { ExtractionFieldDefinition } from '../../../core/extraction-fields';
+export interface BuildSegmentationPromptOptions {
+    focusPageNumber?: number;
+    allowedRegionPageNumbers?: ReadonlyArray<number>;
+    extractionFields?: ReadonlyArray<ExtractionFieldDefinition>;
+}
 /**
  * Builds the text portion of the Gemini segmentation prompt.
  *
@@ -22,5 +28,5 @@ import type { PreparedPageImage } from '../../../core/source-model/types';
  *                       When empty, the built-in default instruction block is used.
  * @returns              Prompt text string to include as the first `text` part.
  */
-export declare function buildSegmentationPrompt(pages: PreparedPageImage[], profile: CropTargetProfile, promptSnapshot: string): string;
+export declare function buildSegmentationPrompt(pages: PreparedPageImage[], profile: CropTargetProfile, promptSnapshot: string, options?: BuildSegmentationPromptOptions): string;
 //# sourceMappingURL=prompt.d.ts.map

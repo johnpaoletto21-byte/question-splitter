@@ -12,6 +12,7 @@
  * TASK-301 adds Agent 2 localization status fields.
  * Later tasks (TASK-401, TASK-501) will extend with final-result fields.
  */
+import type { ExtractionFieldDefinition } from '../extraction-fields';
 /**
  * Per-target summary entry as visible in the local run UI.
  *
@@ -26,6 +27,10 @@ export interface RunSummaryTargetEntry {
     target_type: string;
     /** Ordered list of page numbers covered by this target (from regions[]). */
     page_numbers: number[];
+    /** Page where the target's final visible content ends. */
+    finish_page_number?: number;
+    /** Run-scoped custom boolean values produced by Agent 1. */
+    extraction_fields?: Record<string, boolean>;
     /**
      * Agent 1 status flag.
      * 'ok'           — no review note; result is confident.
@@ -65,6 +70,12 @@ export interface RunSummaryTargetEntry {
      * on FinalResultOk, which is a different, clean payload type).
      */
     drive_url?: string;
+    /** Google Drive file ID, used for traceability and external links. */
+    drive_file_id?: string;
+    /** Absolute path to the local output image for preview/recovery. */
+    local_output_path?: string;
+    /** Local app URL that serves the output image preview. */
+    preview_url?: string;
     /**
      * Stable failure code from Layer B §5.2.
      * Present only when final_status = 'failed'.
@@ -83,6 +94,7 @@ export interface RunSummaryTargetEntry {
  */
 export interface RunSummaryState {
     run_id: string;
+    extraction_fields?: ExtractionFieldDefinition[];
     targets: RunSummaryTargetEntry[];
 }
 //# sourceMappingURL=types.d.ts.map

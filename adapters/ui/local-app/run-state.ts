@@ -5,6 +5,8 @@
  */
 
 import type { RunSummaryState } from '../../../core/run-summary/types';
+import type { ExtractionFieldDefinition } from '../../../core/extraction-fields';
+import type { PromptSnapshot } from '../../../core/prompt-config-store/types';
 
 export type LocalRunStatus = 'queued' | 'running' | 'succeeded' | 'failed';
 
@@ -19,11 +21,15 @@ export interface LocalRunRecord {
   status: LocalRunStatus;
   runLabel?: string;
   pdfFileName?: string;
+  outputDir?: string;
   createdAt: string;
   updatedAt: string;
   logs: LocalRunLogEntry[];
+  extractionFields: ExtractionFieldDefinition[];
+  promptSnapshot?: PromptSnapshot;
   summary?: RunSummaryState;
   error?: string;
+  failureContext?: unknown;
 }
 
 const runs = new Map<string, LocalRunRecord>();
@@ -40,6 +46,9 @@ function makeRunId(): string {
 export function createRunRecord(input: {
   runLabel?: string;
   pdfFileName?: string;
+  outputDir?: string;
+  extractionFields?: ExtractionFieldDefinition[];
+  promptSnapshot?: PromptSnapshot;
 }): LocalRunRecord {
   const timestamp = nowIso();
   const record: LocalRunRecord = {
@@ -47,9 +56,12 @@ export function createRunRecord(input: {
     status: 'queued',
     runLabel: input.runLabel,
     pdfFileName: input.pdfFileName,
+    outputDir: input.outputDir,
     createdAt: timestamp,
     updatedAt: timestamp,
     logs: [],
+    extractionFields: input.extractionFields ?? [],
+    promptSnapshot: input.promptSnapshot,
   };
   runs.set(record.id, record);
   return record;
@@ -92,13 +104,14 @@ export function markRunSucceeded(id: string, summary: RunSummaryState): void {
   record.updatedAt = nowIso();
 }
 
-export function markRunFailed(id: string, error: string): void {
+export function markRunFailed(id: string, error: string, failureContext?: unknown): void {
   const record = runs.get(id);
   if (!record) {
     return;
   }
   record.status = 'failed';
   record.error = error;
+  record.failureContext = failureContext;
   record.updatedAt = nowIso();
 }
 

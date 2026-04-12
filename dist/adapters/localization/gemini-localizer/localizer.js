@@ -31,6 +31,7 @@ const prompt_1 = require("./prompt");
 const parser_1 = require("./parser");
 const schema_1 = require("./schema");
 exports.DEFAULT_GEMINI_LOCALIZER_MODEL = 'gemini-3.1-flash-lite-preview';
+const MAX_LOCALIZATION_REPAIR_RETRIES = 2;
 // ---------------------------------------------------------------------------
 // Default HTTP client (native fetch, Node.js 18+)
 // ---------------------------------------------------------------------------
@@ -83,6 +84,24 @@ function buildGeminiLocalizationRequest(promptText, relevantPages, encodeFn = en
         },
     };
 }
+function isLocalizationSchemaError(err) {
+    return (typeof err === 'object' &&
+        err !== null &&
+        err['code'] === 'LOCALIZATION_SCHEMA_INVALID');
+}
+function buildRepairPrompt(originalPrompt, targetId, validationMessage, invalidOutput) {
+    return `${originalPrompt}
+
+## Correction Required
+Your previous localization response for target ${targetId} failed validation:
+${validationMessage}
+
+Return corrected JSON for the same target and the same page_number sequence.
+Do not return an empty or placeholder bbox. Every bbox_1000 must have y_min < y_max and x_min < x_max.
+Previous invalid JSON:
+${JSON.stringify(invalidOutput, null, 2)}
+`;
+}
 // ---------------------------------------------------------------------------
 // Response unwrapper
 // ---------------------------------------------------------------------------
@@ -122,21 +141,27 @@ function unwrapGeminiLocalizationResponse(raw) {
 // Page selection helper
 // ---------------------------------------------------------------------------
 /**
- * Filters the full prepared-pages list to only the pages relevant to this target.
- * Pages are returned in the order the target's regions specify (reading order).
+ * Filters the full prepared-pages list to the context needed for this target.
+ * Agent 2 gets the finish page and the immediately previous page when present.
  *
  * If a required page is not found in the prepared list, an error is thrown
  * so the orchestrator can handle the missing-page failure cleanly.
  */
 function selectPagesForTarget(target, allPages) {
-    return target.regions.map((region, i) => {
-        const page = allPages.find((p) => p.page_number === region.page_number);
+    const finishPage = target.finish_page_number ??
+        Math.max(...target.regions.map((region) => region.page_number));
+    const selected = [finishPage - 1, finishPage]
+        .filter((pageNumber) => pageNumber >= 1)
+        .map((pageNumber) => allPages.find((p) => p.page_number === pageNumber))
+        .filter((page) => page !== undefined);
+    for (const region of target.regions) {
+        const page = selected.find((p) => p.page_number === region.page_number);
         if (!page) {
-            throw new Error(`localizeTarget: target "${target.target_id}" region[${i}] references ` +
+            throw new Error(`localizeTarget: target "${target.target_id}" references ` +
                 `page_number ${region.page_number} but no prepared page with that number was found`);
         }
-        return page;
-    });
+    }
+    return selected;
 }
 // ---------------------------------------------------------------------------
 // Main adapter function
@@ -164,11 +189,38 @@ async function localizeTarget(runId, target, allPages, profile, promptSnapshot, 
         `?key=${config.apiKey}`;
     const relevantPages = selectPagesForTarget(target, allPages);
     const promptText = (0, prompt_1.buildLocalizationPrompt)(target, profile, promptSnapshot);
-    const requestBody = buildGeminiLocalizationRequest(promptText, relevantPages, encodeFn);
-    const rawResponse = await httpPost(url, requestBody, {
-        'Content-Type': 'application/json',
-    });
-    const parsedJson = unwrapGeminiLocalizationResponse(rawResponse);
-    return (0, parser_1.parseGeminiLocalizationResponse)(parsedJson, runId, target, profile.max_regions_per_target);
+    let currentPrompt = promptText;
+    let initialValidationMessage = '';
+    let lastParsedJson;
+    for (let attempt = 0; attempt <= MAX_LOCALIZATION_REPAIR_RETRIES; attempt++) {
+        const requestBody = buildGeminiLocalizationRequest(currentPrompt, relevantPages, encodeFn);
+        const rawResponse = await httpPost(url, requestBody, {
+            'Content-Type': 'application/json',
+        });
+        const parsedJson = unwrapGeminiLocalizationResponse(rawResponse);
+        lastParsedJson = parsedJson;
+        try {
+            return (0, parser_1.parseGeminiLocalizationResponse)(parsedJson, runId, target, profile.max_regions_per_target);
+        }
+        catch (err) {
+            if (!isLocalizationSchemaError(err)) {
+                throw err;
+            }
+            const validationMessage = String(err['message'] ?? 'Localization schema invalid');
+            if (initialValidationMessage === '') {
+                initialValidationMessage = validationMessage;
+            }
+            if (attempt === MAX_LOCALIZATION_REPAIR_RETRIES) {
+                throw {
+                    ...err,
+                    message: `${validationMessage} ` +
+                        `(after ${MAX_LOCALIZATION_REPAIR_RETRIES} retries; ` +
+                        `initial validation error: ${initialValidationMessage})`,
+                };
+            }
+            currentPrompt = buildRepairPrompt(promptText, target.target_id, validationMessage, lastParsedJson);
+        }
+    }
+    throw new Error('localizeTarget: unreachable retry loop exit');
 }
 //# sourceMappingURL=localizer.js.map

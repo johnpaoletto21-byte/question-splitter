@@ -133,4 +133,83 @@ describe('parseGeminiSegmentationResponse', () => {
     const result = parseGeminiSegmentationResponse(raw, customRunId, 2);
     expect(result.run_id).toBe(customRunId);
   });
+
+  it('validates focus page and extraction fields when options are provided', () => {
+    const raw = {
+      targets: [{
+        target_type: 'question',
+        finish_page_number: 2,
+        regions: [{ page_number: 2 }],
+        extraction_fields: { has_diagram: false },
+      }],
+    };
+
+    const result = parseGeminiSegmentationResponse(raw, RUN_ID, 2, {
+      focusPageNumber: 2,
+      extractionFields: [{
+        key: 'has_diagram',
+        label: 'Has Diagram',
+        description: 'true if diagram appears',
+        type: 'boolean',
+      }],
+    });
+
+    expect(result.targets[0].finish_page_number).toBe(2);
+    expect(result.targets[0].extraction_fields).toEqual({ has_diagram: false });
+  });
+
+  it('rejects responses whose target does not finish on the focus page', () => {
+    const raw = {
+      targets: [{
+        target_type: 'question',
+        finish_page_number: 3,
+        regions: [{ page_number: 3 }],
+      }],
+    };
+
+    expect(() => parseGeminiSegmentationResponse(raw, RUN_ID, 2, {
+      focusPageNumber: 2,
+    })).toThrow(expect.objectContaining({ code: 'SEGMENTATION_SCHEMA_INVALID' }));
+  });
+
+  it('rejects focus-page targets whose regions do not include the finish page', () => {
+    const raw = {
+      targets: [{
+        target_type: 'question',
+        finish_page_number: 5,
+        regions: [{ page_number: 1 }],
+      }],
+    };
+
+    expect(() => parseGeminiSegmentationResponse(raw, RUN_ID, 2, {
+      focusPageNumber: 5,
+    })).toThrow(expect.objectContaining({
+      code: 'SEGMENTATION_SCHEMA_INVALID',
+      message: expect.stringContaining('finish_page_number 5'),
+    }));
+  });
+
+  it('accepts an empty target list for a focus window', () => {
+    const result = parseGeminiSegmentationResponse({ targets: [] }, RUN_ID, 2, {
+      focusPageNumber: 2,
+    });
+
+    expect(result.targets).toEqual([]);
+  });
+
+  it('accepts a valid two-page target ending on the focus page', () => {
+    const raw = {
+      targets: [{
+        target_type: 'question',
+        finish_page_number: 5,
+        regions: [{ page_number: 4 }, { page_number: 5 }],
+      }],
+    };
+
+    const result = parseGeminiSegmentationResponse(raw, RUN_ID, 2, {
+      focusPageNumber: 5,
+    });
+
+    expect(result.targets[0].regions.map((region) => region.page_number)).toEqual([4, 5]);
+  });
 });

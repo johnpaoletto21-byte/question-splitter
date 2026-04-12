@@ -71,21 +71,18 @@ function makeValidLocalizationJson(pageNumber: number = 1): string {
 // ---------------------------------------------------------------------------
 
 describe('selectPagesForTarget', () => {
-  it('returns the page matching the target region', () => {
-    const target = makeTarget({ regions: [{ page_number: 2 }] });
+  it('returns previous and finish page for the target context', () => {
+    const target = makeTarget({ finish_page_number: 2, regions: [{ page_number: 2 }] });
     const pages = [makePage(1), makePage(2), makePage(3)];
     const selected = selectPagesForTarget(target, pages);
-    expect(selected).toHaveLength(1);
-    expect(selected[0].page_number).toBe(2);
+    expect(selected.map((page) => page.page_number)).toEqual([1, 2]);
   });
 
-  it('returns pages in region order (not allPages order)', () => {
-    const target = makeTarget({ regions: [{ page_number: 3 }, { page_number: 1 }] });
+  it('returns only page 1 for first-page targets', () => {
+    const target = makeTarget({ finish_page_number: 1, regions: [{ page_number: 1 }] });
     const pages = [makePage(1), makePage(2), makePage(3)];
     const selected = selectPagesForTarget(target, pages);
-    expect(selected).toHaveLength(2);
-    expect(selected[0].page_number).toBe(3);
-    expect(selected[1].page_number).toBe(1);
+    expect(selected.map((page) => page.page_number)).toEqual([1]);
   });
 
   it('throws when a required page is not found', () => {
@@ -310,6 +307,105 @@ describe('localizeTarget', () => {
         () => 'b64',
       ),
     ).rejects.toMatchObject({ code: 'LOCALIZATION_SCHEMA_INVALID' });
+  });
+
+  it('retries once with a correction prompt when Gemini returns an invalid bbox', async () => {
+    const responses = [
+      JSON.stringify({
+        regions: [{ page_number: 1, bbox_1000: [0, 100, 0, 900] }],
+      }),
+      makeValidLocalizationJson(1),
+    ];
+    const capturedPrompts: string[] = [];
+    const httpPost: HttpPostFn = async (_url, body) => {
+      const contents = ((body as Record<string, unknown>)['contents'] as unknown[]);
+      const parts = ((contents[0] as Record<string, unknown>)['parts'] as unknown[]);
+      capturedPrompts.push((parts[0] as Record<string, unknown>)['text'] as string);
+      return makeGeminiEnvelope(responses.shift()!);
+    };
+
+    const result = await localizeTarget(
+      'run_retry',
+      makeTarget(),
+      [makePage(1)],
+      {
+        target_type: 'question',
+        max_regions_per_target: 2,
+        composition_mode: 'top_to_bottom',
+      },
+      '',
+      CONFIG,
+      httpPost,
+      () => 'b64',
+    );
+
+    expect(result.regions[0].bbox_1000).toEqual([100, 50, 800, 950]);
+    expect(capturedPrompts).toHaveLength(2);
+    expect(capturedPrompts[1]).toContain('Correction Required');
+    expect(capturedPrompts[1]).toContain('inverted y');
+    expect(capturedPrompts[1]).toContain('"bbox_1000"');
+  });
+
+  it('allows two correction retries before failing the target', async () => {
+    const responses = [
+      JSON.stringify({
+        regions: [{ page_number: 1, bbox_1000: [0, 100, 0, 900] }],
+      }),
+      JSON.stringify({
+        regions: [{ page_number: 1, bbox_1000: [200, 100, 200, 900] }],
+      }),
+      makeValidLocalizationJson(1),
+    ];
+    const httpPost: HttpPostFn = async () => makeGeminiEnvelope(responses.shift()!);
+
+    const result = await localizeTarget(
+      'run_retry_twice',
+      makeTarget(),
+      [makePage(1)],
+      {
+        target_type: 'question',
+        max_regions_per_target: 2,
+        composition_mode: 'top_to_bottom',
+      },
+      '',
+      CONFIG,
+      httpPost,
+      () => 'b64',
+    );
+
+    expect(result.regions[0].bbox_1000).toEqual([100, 50, 800, 950]);
+  });
+
+  it('reports both validation failures when the retry also returns an invalid bbox', async () => {
+    const invalidJson = JSON.stringify({
+      regions: [{ page_number: 1, bbox_1000: [0, 100, 0, 900] }],
+    });
+    let callCount = 0;
+    const httpPost: HttpPostFn = async () => {
+      callCount += 1;
+      return makeGeminiEnvelope(invalidJson);
+    };
+
+    await expect(
+      localizeTarget(
+        'run_retry_bad',
+        makeTarget(),
+        [makePage(1)],
+        {
+          target_type: 'question',
+          max_regions_per_target: 2,
+          composition_mode: 'top_to_bottom',
+        },
+        '',
+        CONFIG,
+        httpPost,
+        () => 'b64',
+      ),
+    ).rejects.toMatchObject({
+      code: 'LOCALIZATION_SCHEMA_INVALID',
+      message: expect.stringContaining('after 2 retries'),
+    });
+    expect(callCount).toBe(3);
   });
 
   it('defaults model to gemini-3.1-flash-lite-preview when not specified', async () => {

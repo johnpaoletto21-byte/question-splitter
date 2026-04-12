@@ -16,7 +16,14 @@
 
 import { validateSegmentationResult } from '../../../core/segmentation-contract/validation';
 import type { SegmentationResult } from '../../../core/segmentation-contract/types';
+import type { ExtractionFieldDefinition } from '../../../core/extraction-fields';
 import type { GeminiRawSegmentationOutput, GeminiRawTarget } from './types';
+
+export interface ParseGeminiSegmentationOptions {
+  extractionFields?: ReadonlyArray<ExtractionFieldDefinition>;
+  focusPageNumber?: number;
+  targetIdOffset?: number;
+}
 
 // ---------------------------------------------------------------------------
 // Target ID generation
@@ -74,17 +81,25 @@ export function parseGeminiSegmentationResponse(
   raw: unknown,
   runId: string,
   maxRegionsPerTarget: number = 2,
+  options: ParseGeminiSegmentationOptions = {},
 ): SegmentationResult {
   assertRawShape(raw);
 
   // Assign sequential target_id values in the order Gemini returned them
   // (reading order). The ID encodes position so downstream sorting is stable.
+  const offset = options.targetIdOffset ?? 0;
   const targets = (raw.targets as GeminiRawTarget[]).map((t, i) => {
     const target: Record<string, unknown> = {
-      target_id: makeTargetId(i),
+      target_id: makeTargetId(offset + i),
       target_type: t.target_type,
       regions: t.regions,
     };
+    if (typeof t.finish_page_number === 'number') {
+      target['finish_page_number'] = t.finish_page_number;
+    }
+    if (t.extraction_fields !== undefined) {
+      target['extraction_fields'] = t.extraction_fields;
+    }
     if (typeof t.review_comment === 'string') {
       target['review_comment'] = t.review_comment;
     }
@@ -94,5 +109,8 @@ export function parseGeminiSegmentationResponse(
   const normalized = { run_id: runId, targets };
 
   // Run full contract validation (enforces INV-2, INV-3, INV-4 constraints).
-  return validateSegmentationResult(normalized, maxRegionsPerTarget);
+  return validateSegmentationResult(normalized, maxRegionsPerTarget, {
+    extractionFields: options.extractionFields,
+    focusPageNumber: options.focusPageNumber,
+  });
 }

@@ -14,6 +14,12 @@
  * in raw form — only the normalized SegmentationResult is returned.
  */
 import type { SegmentationResult } from '../../../core/segmentation-contract/types';
+import type { ExtractionFieldDefinition } from '../../../core/extraction-fields';
+export interface ParseGeminiSegmentationOptions {
+    extractionFields?: ReadonlyArray<ExtractionFieldDefinition>;
+    focusPageNumber?: number;
+    targetIdOffset?: number;
+}
 /**
  * Parses the raw Gemini structured JSON output and returns a normalized
  * SegmentationResult.
@@ -24,5 +30,5 @@ import type { SegmentationResult } from '../../../core/segmentation-contract/typ
  * @returns        Validated, normalized SegmentationResult.
  * @throws         Error or SegmentationValidationError on invalid response.
  */
-export declare function parseGeminiSegmentationResponse(raw: unknown, runId: string, maxRegionsPerTarget?: number): SegmentationResult;
+export declare function parseGeminiSegmentationResponse(raw: unknown, runId: string, maxRegionsPerTarget?: number, options?: ParseGeminiSegmentationOptions): SegmentationResult;
 //# sourceMappingURL=parser.d.ts.map

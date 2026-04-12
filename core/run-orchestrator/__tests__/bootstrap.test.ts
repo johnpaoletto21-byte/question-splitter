@@ -45,6 +45,16 @@ describe('bootstrapRun — run context creation', () => {
     expect(ctx.run_label).toBe('Exam 2024-Q1');
   });
 
+  it('uses a caller-supplied promptSnapshot when provided', () => {
+    const promptSnapshot = {
+      agent1Prompt: 'provided agent 1',
+      agent2Prompt: 'provided agent 2',
+      capturedAt: '2024-01-01T00:00:00.000Z',
+    };
+    const ctx = bootstrapRun(makeRequest({ promptSnapshot }));
+    expect(ctx.promptSnapshot).toBe(promptSnapshot);
+  });
+
   it('run_label is undefined when not provided', () => {
     const ctx = bootstrapRun(makeRequest());
     expect(ctx.run_label).toBeUndefined();

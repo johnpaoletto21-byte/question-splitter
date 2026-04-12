@@ -72,6 +72,57 @@ describe('parsePdfUpload', () => {
     const parsed = await promise;
     expect(parsed.originalFileName).toBe('exam.pdf');
     expect(parsed.runLabel).toBe('Exam label');
+    expect(parsed.extractionFields).toEqual([]);
     expect(fs.existsSync(parsed.pdfFilePath)).toBe(true);
+  });
+
+  it('parses custom extraction fields from indexed form rows', async () => {
+    const req = makeReq('multipart/form-data; boundary=test-boundary');
+    const promise = parsePdfUpload(req, tmpDir);
+    req.end([
+      '--test-boundary',
+      'Content-Disposition: form-data; name="extractionFieldName_0"',
+      '',
+      'Has Diagram',
+      '--test-boundary',
+      'Content-Disposition: form-data; name="extractionFieldDescription_0"',
+      '',
+      'true if the question includes a diagram',
+      '--test-boundary',
+      'Content-Disposition: form-data; name="pdfFile"; filename="exam.pdf"',
+      'Content-Type: application/pdf',
+      '',
+      '%PDF-1.7',
+      '--test-boundary--',
+      '',
+    ].join('\r\n'));
+
+    const parsed = await promise;
+    expect(parsed.extractionFields).toEqual([{
+      key: 'has_diagram',
+      label: 'Has Diagram',
+      description: 'true if the question includes a diagram',
+      type: 'boolean',
+    }]);
+  });
+
+  it('rejects invalid custom extraction fields', async () => {
+    const req = makeReq('multipart/form-data; boundary=test-boundary');
+    const promise = parsePdfUpload(req, tmpDir);
+    req.end([
+      '--test-boundary',
+      'Content-Disposition: form-data; name="extractionFieldName_0"',
+      '',
+      'Has Diagram',
+      '--test-boundary',
+      'Content-Disposition: form-data; name="pdfFile"; filename="exam.pdf"',
+      'Content-Type: application/pdf',
+      '',
+      '%PDF-1.7',
+      '--test-boundary--',
+      '',
+    ].join('\r\n'));
+
+    await expect(promise).rejects.toMatchObject({ code: 'EXTRACTION_FIELD_INVALID' });
   });
 });

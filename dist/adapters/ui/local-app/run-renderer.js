@@ -28,8 +28,12 @@ function baseStyles() {
     label { display: block; margin: 1rem 0 0.35rem; font-weight: bold; }
     input { font-family: monospace; font-size: 0.9rem; }
     input[type="text"] { width: 100%; box-sizing: border-box; padding: 0.45rem; border: 1px solid #bbb; }
+    textarea { width: 100%; box-sizing: border-box; min-height: 4rem; padding: 0.45rem; border: 1px solid #bbb; font-family: monospace; font-size: 0.9rem; }
     button { margin-top: 1rem; padding: 0.5rem 1.25rem; cursor: pointer; }
     button:disabled { cursor: not-allowed; opacity: 0.6; }
+    fieldset { border: 1px solid #ccc; margin: 1rem 0; padding: 0.9rem; }
+    .field-row { border-top: 1px solid #ddd; margin-top: 0.8rem; padding-top: 0.8rem; }
+    .hint { color: #555; font-size: 0.82rem; line-height: 1.4; }
     .logs { border: 1px solid #ccc; padding: 0.75rem; background: #fafafa; white-space: pre-wrap; }
   `;
 }
@@ -61,8 +65,35 @@ function renderRunFormHtml(input) {
     <input id="pdfFile" name="pdfFile" type="file" accept="application/pdf,.pdf" data-testid="run-pdf-file"${disabled}>
     <div class="notice warn">Maximum upload size: ${input.maxUploadMb} MB.</div>
 
+    <fieldset data-testid="extraction-fields">
+      <legend>Custom boolean fields</legend>
+      <p class="hint">Optional per-question labels for Agent 1, such as "Has Diagram" or "Long Passage". Each value is returned as Yes/No in the summary.</p>
+      <div id="extractionFieldRows"></div>
+      <button type="button" id="addExtractionField" data-testid="add-extraction-field-button"${disabled}>Add Field</button>
+    </fieldset>
+
     <button type="submit" data-testid="run-start-button"${disabled}>Start Run</button>
   </form>
+  <script>
+    (function () {
+      var rows = document.getElementById('extractionFieldRows');
+      var add = document.getElementById('addExtractionField');
+      var nextIndex = 0;
+      function addRow() {
+        var index = nextIndex++;
+        var row = document.createElement('div');
+        row.className = 'field-row';
+        row.setAttribute('data-testid', 'extraction-field-row');
+        row.innerHTML =
+          '<label for="extractionFieldName_' + index + '">Field name</label>' +
+          '<input id="extractionFieldName_' + index + '" name="extractionFieldName_' + index + '" type="text" placeholder="Has Diagram">' +
+          '<label for="extractionFieldDescription_' + index + '">Description</label>' +
+          '<textarea id="extractionFieldDescription_' + index + '" name="extractionFieldDescription_' + index + '" placeholder="true if the question includes a diagram, graph, chart, geometric figure, or other visual material"></textarea>';
+        rows.appendChild(row);
+      }
+      add.addEventListener('click', addRow);
+    })();
+  </script>
 </body>
 </html>`;
 }

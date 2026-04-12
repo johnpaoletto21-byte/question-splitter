@@ -47,8 +47,31 @@ const google_drive_1 = require("../upload/google-drive");
 const image_processing_1 = require("../image-processing");
 const run_orchestrator_1 = require("../../core/run-orchestrator");
 const summary_1 = require("../../core/run-summary/summary");
+const page_windows_1 = require("./page-windows");
 function emit(onLog, stage, message) {
     onLog?.({ stage, message, timestamp: new Date().toISOString() });
+}
+function formatUnknownError(err) {
+    if (err instanceof Error) {
+        return err.message;
+    }
+    if (typeof err === 'string') {
+        return err;
+    }
+    try {
+        return JSON.stringify(err);
+    }
+    catch {
+        return String(err);
+    }
+}
+function errorCode(err, fallback) {
+    if (typeof err === 'object' &&
+        err !== null &&
+        typeof err['code'] === 'string') {
+        return err['code'];
+    }
+    return fallback;
 }
 /**
  * Runs the complete local pipeline and returns the final summary state.
@@ -60,23 +83,75 @@ async function runFullPipeline(input, deps = {}) {
         pdfFilePaths: input.pdfFilePaths,
         config: input.config,
         runLabel: input.runLabel,
+        promptSnapshot: input.promptSnapshot,
     });
     emit(input.onLog, 'bootstrap', `Run ID: ${context.run_id}`);
     emit(input.onLog, 'render', 'Rendering PDF pages');
     const rendered = await (0, run_orchestrator_1.renderAllSources)(context, deps.renderer ?? pdf_renderer_1.renderPdfSource);
     emit(input.onLog, 'render', `Rendered ${rendered.preparedPages.length} page image(s)`);
-    const segmenter = deps.segmenter ?? ((runId, pages, profile, promptSnapshot) => (0, gemini_segmenter_1.segmentPages)(runId, pages, profile, promptSnapshot, { apiKey: input.config.GEMINI_API_KEY }));
-    emit(input.onLog, 'segmentation', 'Running Agent 1 segmentation');
-    const segmentation = await (0, run_orchestrator_1.runSegmentationStep)(rendered.run_id, rendered.preparedPages, rendered.activeProfile, rendered.promptSnapshot.agent1Prompt, segmenter);
+    const extractionFields = input.extractionFields ?? [];
+    const segmenter = deps.segmenter ?? ((runId, pages, profile, promptSnapshot, options) => (0, gemini_segmenter_1.segmentPages)(runId, pages, profile, promptSnapshot, { apiKey: input.config.GEMINI_API_KEY }, undefined, undefined, options));
+    emit(input.onLog, 'segmentation', 'Running Agent 1 segmentation in page windows');
+    const segmentationWindows = (0, page_windows_1.buildSegmentationPageWindows)(rendered.preparedPages);
+    const windowResults = [];
+    for (const window of segmentationWindows) {
+        const allowedRegionPageNumbers = (0, page_windows_1.getAllowedSegmentationRegionPageNumbers)(window.focusPageNumber);
+        emit(input.onLog, 'segmentation', `Agent 1 focus page ${window.focusPageNumber} with pages ` +
+            `${window.pages.map((page) => page.page_number).join(', ')}; ` +
+            `allowed output region pages ${allowedRegionPageNumbers.join(', ')}`);
+        try {
+            windowResults.push(await (0, run_orchestrator_1.runSegmentationStep)(rendered.run_id, window.pages, rendered.activeProfile, rendered.promptSnapshot.agent1Prompt, segmenter, {
+                focusPageNumber: window.focusPageNumber,
+                allowedRegionPageNumbers,
+                extractionFields,
+            }));
+        }
+        catch (err) {
+            const message = formatUnknownError(err);
+            const segmentationWindow = {
+                focusPageNumber: window.focusPageNumber,
+                pageNumbers: window.pages.map((page) => page.page_number),
+                allowedRegionPageNumbers,
+            };
+            emit(input.onLog, 'segmentation', `Agent 1 failed for focus page ${window.focusPageNumber}; ` +
+                `allowed output region pages ${allowedRegionPageNumbers.join(', ')}; ${message}`);
+            throw {
+                code: errorCode(err, 'SEGMENTATION_FAILED'),
+                message,
+                segmentationWindow,
+            };
+        }
+    }
+    const segmentation = (0, page_windows_1.mergeWindowedSegmentationResults)(rendered.run_id, windowResults);
     emit(input.onLog, 'segmentation', `Agent 1 found ${segmentation.targets.length} target(s)`);
-    let summary = (0, summary_1.buildRunSummaryFromSegmentation)(segmentation);
+    let summary = (0, summary_1.buildRunSummaryFromSegmentation)(segmentation, extractionFields);
     const localizer = deps.localizer ?? ((runId, target, pages, profile, promptSnapshot) => (0, gemini_localizer_1.localizeTarget)(runId, target, pages, profile, promptSnapshot, { apiKey: input.config.GEMINI_API_KEY }));
     emit(input.onLog, 'localization', 'Running Agent 2 localization');
-    const localized = await (0, run_orchestrator_1.runLocalizationStep)(rendered.run_id, segmentation, rendered.preparedPages, rendered.activeProfile, rendered.promptSnapshot.agent2Prompt, localizer);
+    const localized = [];
+    const localizationFailureRows = [];
+    for (const target of segmentation.targets) {
+        try {
+            const result = await localizer(rendered.run_id, target, (0, page_windows_1.selectLocalizationContextPages)(target, rendered.preparedPages), rendered.activeProfile, rendered.promptSnapshot.agent2Prompt);
+            localized.push(result);
+            emit(input.onLog, 'localization', `Localized ${target.target_id}`);
+        }
+        catch (err) {
+            const message = formatUnknownError(err);
+            emit(input.onLog, 'localization', `Localization failed for ${target.target_id}: ${message}`);
+            localizationFailureRows.push({
+                target_id: target.target_id,
+                source_pages: target.regions.map((r) => r.page_number),
+                output_file_name: '',
+                status: 'failed',
+                failure_code: errorCode(err, 'LOCALIZATION_FAILED'),
+                failure_message: message,
+            });
+        }
+    }
     for (const result of localized) {
         summary = (0, summary_1.applyLocalizationToSummary)(summary, result);
     }
-    emit(input.onLog, 'localization', `Localized ${localized.length} target(s)`);
+    emit(input.onLog, 'localization', `Localized ${localized.length} target(s); ${localizationFailureRows.length} failed`);
     const cropExecutor = deps.cropExecutor ?? (0, image_processing_1.makeCanvasCropExecutor)(input.config.OUTPUT_DIR);
     emit(input.onLog, 'crop', 'Cropping target regions');
     const cropResults = await (0, run_orchestrator_1.runCropStep)(rendered.run_id, localized, rendered.preparedPages, cropExecutor);
@@ -88,7 +163,11 @@ async function runFullPipeline(input, deps = {}) {
     emit(input.onLog, 'upload', 'Uploading outputs to Google Drive');
     const finalRows = await (0, run_orchestrator_1.runUploadStep)(rendered.run_id, composedRows, input.config.DRIVE_FOLDER_ID, input.config.OAUTH_TOKEN_PATH, deps.driveUploader ?? google_drive_1.uploadToDrive);
     emit(input.onLog, 'upload', 'Drive upload step finished');
-    summary = (0, summary_1.applyFinalResultsToSummary)(summary, finalRows);
+    const finalRowMap = new Map([...finalRows, ...localizationFailureRows].map((row) => [row.target_id, row]));
+    const orderedFinalRows = segmentation.targets
+        .map((target) => finalRowMap.get(target.target_id))
+        .filter((row) => row !== undefined);
+    summary = (0, summary_1.applyFinalResultsToSummary)(summary, orderedFinalRows);
     emit(input.onLog, 'summary', 'Summary ready');
     return summary;
 }

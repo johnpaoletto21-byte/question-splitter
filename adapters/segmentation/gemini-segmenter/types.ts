@@ -43,7 +43,9 @@ export interface GeminiRawRegion {
  */
 export interface GeminiRawTarget {
   target_type: string;
+  finish_page_number?: number;
   regions: GeminiRawRegion[];
+  extraction_fields?: Record<string, unknown>;
   review_comment?: string;
 }
 

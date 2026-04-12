@@ -60,6 +60,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.RUN_PATH = exports.PROMPT_EDIT_PATH = exports.PREVIEW_PATH = exports.PREVIEW_PORT = void 0;
 exports.createPreviewServer = createPreviewServer;
 const http = __importStar(require("http"));
+const fs = __importStar(require("fs"));
+const path = __importStar(require("path"));
 const summary_renderer_1 = require("./summary-renderer");
 const preview_fixture_1 = require("./preview-fixture");
 const prompt_editor_1 = require("./prompt-editor");
@@ -110,6 +112,14 @@ function writeMarkdown(res, filename, markdown) {
     });
     res.end(body);
 }
+function writePng(res, filePath) {
+    const body = fs.readFileSync(filePath);
+    res.writeHead(200, {
+        'Content-Type': 'image/png',
+        'Content-Length': body.length,
+    });
+    res.end(body);
+}
 function redirect(res, location) {
     res.writeHead(303, { Location: location });
     res.end();
@@ -128,6 +138,15 @@ function formatUnknownError(err) {
         return String(err);
     }
 }
+function extractFailureContext(err) {
+    if (typeof err !== 'object' || err === null) {
+        return undefined;
+    }
+    const record = err;
+    return record['segmentationWindow'] !== undefined
+        ? { segmentationWindow: record['segmentationWindow'] }
+        : undefined;
+}
 function tryLoadConfigForDebug(loadConfigFn) {
     try {
         return { config: loadConfigFn() };
@@ -142,6 +161,25 @@ function addDebugLinkToSummaryHtml(html, runId) {
         `  <div class="nav"><a href="/runs/${runId}/debug.md" data-testid="summary-debug-download-link" download>Download Debug Package (.md)</a></div>`,
     ].join('\n');
     return html.replace('<body>', link);
+}
+function withPreviewUrls(summary, localRunId, outputDir) {
+    return {
+        ...summary,
+        targets: summary.targets.map((target) => ({
+            ...target,
+            ...(target.local_output_path !== undefined &&
+                outputDir !== undefined &&
+                isPathInsideDirectory(target.local_output_path, outputDir)
+                ? { preview_url: `/runs/${localRunId}/preview/${encodeURIComponent(target.target_id)}` }
+                : {}),
+        })),
+    };
+}
+function isPathInsideDirectory(filePath, directory) {
+    const resolvedFile = path.resolve(filePath);
+    const resolvedDirectory = path.resolve(directory);
+    return resolvedFile === resolvedDirectory ||
+        resolvedFile.startsWith(`${resolvedDirectory}${path.sep}`);
 }
 function loadConfigForForm(loadConfigFn) {
     try {
@@ -165,7 +203,7 @@ function startRun(recordId, input, runFullPipelineFn) {
         .catch((err) => {
         const message = formatUnknownError(err);
         (0, run_state_1.appendRunLog)(recordId, 'app', `Run failed: ${message}`);
-        (0, run_state_1.markRunFailed)(recordId, message);
+        (0, run_state_1.markRunFailed)(recordId, message, extractFailureContext(err));
     });
 }
 function createPreviewServer(options = {}) {
@@ -212,15 +250,24 @@ function createPreviewServer(options = {}) {
             }
             parsePdfUploadFn(req, config.OUTPUT_DIR)
                 .then((upload) => {
+                const promptSnapshot = (0, store_1.capturePromptSnapshot)();
                 const record = (0, run_state_1.createRunRecord)({
                     runLabel: upload.runLabel,
                     pdfFileName: upload.originalFileName,
+                    outputDir: config.OUTPUT_DIR,
+                    extractionFields: upload.extractionFields,
+                    promptSnapshot,
                 });
                 (0, run_state_1.appendRunLog)(record.id, 'upload', `Uploaded ${upload.originalFileName}`);
+                if (upload.extractionFields.length > 0) {
+                    (0, run_state_1.appendRunLog)(record.id, 'upload', `Configured extraction fields: ${upload.extractionFields.map((f) => f.key).join(', ')}`);
+                }
                 startRun(record.id, {
                     pdfFilePaths: [upload.pdfFilePath],
                     runLabel: upload.runLabel,
                     config,
+                    extractionFields: upload.extractionFields,
+                    promptSnapshot,
                     onLog: (event) => (0, run_state_1.appendRunLog)(record.id, event.stage, event.message, event.timestamp),
                 }, runFullPipelineFn);
                 redirect(res, `/runs/${record.id}`);
@@ -232,6 +279,23 @@ function createPreviewServer(options = {}) {
                     : 400;
                 writeHtml(res, statusCode, (0, run_renderer_1.renderRunErrorHtml)('Upload Error', message));
             });
+            return;
+        }
+        // ── GET /runs/:runId/preview/:targetId ──────────────────────────────
+        const previewMatch = url.pathname.match(/^\/runs\/([^/]+)\/preview\/([^/]+)$/);
+        if (req.method === 'GET' && previewMatch) {
+            const record = (0, run_state_1.getRunRecord)(previewMatch[1]);
+            const targetId = decodeURIComponent(previewMatch[2]);
+            const target = record?.summary?.targets.find((entry) => entry.target_id === targetId);
+            if (!record ||
+                !target?.local_output_path ||
+                !record.outputDir ||
+                !isPathInsideDirectory(target.local_output_path, record.outputDir) ||
+                !fs.existsSync(target.local_output_path)) {
+                writeHtml(res, 404, (0, run_renderer_1.renderRunErrorHtml)('Preview Not Found', `No preview found for ${targetId}`));
+                return;
+            }
+            writePng(res, target.local_output_path);
             return;
         }
         // ── GET /runs/:runId, /runs/:runId/summary, /runs/:runId/debug.md ───
@@ -256,7 +320,7 @@ function createPreviewServer(options = {}) {
                     writeHtml(res, 200, (0, run_renderer_1.renderRunStatusHtml)(record));
                     return;
                 }
-                writeHtml(res, 200, addDebugLinkToSummaryHtml((0, summary_renderer_1.renderSummaryHtml)(record.summary), record.id));
+                writeHtml(res, 200, addDebugLinkToSummaryHtml((0, summary_renderer_1.renderSummaryHtml)(withPreviewUrls(record.summary, record.id, record.outputDir)), record.id));
                 return;
             }
             writeHtml(res, 200, (0, run_renderer_1.renderRunStatusHtml)(record));

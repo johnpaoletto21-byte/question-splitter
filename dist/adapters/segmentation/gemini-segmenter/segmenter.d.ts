@@ -19,6 +19,7 @@
 import type { PreparedPageImage } from '../../../core/source-model/types';
 import type { CropTargetProfile } from '../../../core/crop-target-profile/types';
 import type { SegmentationResult } from '../../../core/segmentation-contract/types';
+import type { ExtractionFieldDefinition } from '../../../core/extraction-fields';
 import type { GeminiSegmenterConfig, HttpPostFn } from './types';
 export declare const DEFAULT_GEMINI_SEGMENTER_MODEL = "gemini-3.1-flash-lite-preview";
 /**
@@ -32,7 +33,7 @@ export declare function encodePageImageAsBase64(imagePath: string): string;
  * Uses multimodal content parts: text prompt first, then one inlineData
  * image part per page in order.
  */
-export declare function buildGeminiRequest(promptText: string, pages: PreparedPageImage[], encodeFn?: (path: string) => string): Record<string, unknown>;
+export declare function buildGeminiRequest(promptText: string, pages: PreparedPageImage[], encodeFn?: (path: string) => string, responseSchema?: Record<string, unknown>): Record<string, unknown>;
 /**
  * Extracts the text content from a Gemini generateContent response envelope.
  * The structured JSON output is embedded as a string in:
@@ -55,5 +56,10 @@ export declare function unwrapGeminiResponse(raw: unknown): unknown;
  * @param encodeFn       Injectable image encoder (defaults to readFileSync+base64).
  * @returns              Normalized SegmentationResult with targets in reading order.
  */
-export declare function segmentPages(runId: string, pages: PreparedPageImage[], profile: CropTargetProfile, promptSnapshot: string, config: GeminiSegmenterConfig, httpPost?: HttpPostFn, encodeFn?: (path: string) => string): Promise<SegmentationResult>;
+export declare function segmentPages(runId: string, pages: PreparedPageImage[], profile: CropTargetProfile, promptSnapshot: string, config: GeminiSegmenterConfig, httpPost?: HttpPostFn, encodeFn?: (path: string) => string, options?: {
+    extractionFields?: ReadonlyArray<ExtractionFieldDefinition>;
+    focusPageNumber?: number;
+    allowedRegionPageNumbers?: ReadonlyArray<number>;
+    maxRepairRetries?: number;
+}): Promise<SegmentationResult>;
 //# sourceMappingURL=segmenter.d.ts.map

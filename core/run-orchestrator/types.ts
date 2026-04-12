@@ -21,6 +21,13 @@ export interface RunRequest {
    * Used in logs and summary display.
    */
   runLabel?: string;
+
+  /**
+   * Optional prompt snapshot supplied by an adapter that needs to persist the
+   * exact prompts alongside queued run state. When omitted, bootstrapRun
+   * captures the current session prompts itself.
+   */
+  promptSnapshot?: PromptSnapshot;
 }
 
 /**

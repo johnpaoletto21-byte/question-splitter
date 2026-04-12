@@ -68,4 +68,37 @@ describe('buildSegmentationPrompt', () => {
     expect(prompt).not.toContain('coordinate');
     expect(prompt).not.toContain('pixel');
   });
+
+  it('includes focus page instructions when provided', () => {
+    const prompt = buildSegmentationPrompt(
+      [makePage(1), makePage(2), makePage(3)],
+      PROFILE,
+      '',
+      { focusPageNumber: 2, allowedRegionPageNumbers: [1, 2] },
+    );
+    expect(prompt).toContain('Focus page: 2');
+    expect(prompt).toContain('finish_page_number');
+    expect(prompt).toContain('Allowed output region page_numbers: 1, 2');
+    expect(prompt).toContain('image order is not page number');
+    expect(prompt).toContain('return an empty targets array');
+  });
+
+  it('includes custom extraction field keys and descriptions', () => {
+    const prompt = buildSegmentationPrompt(
+      [makePage(1)],
+      PROFILE,
+      '',
+      {
+        extractionFields: [{
+          key: 'has_diagram',
+          label: 'Has Diagram',
+          description: 'true if the question includes a diagram',
+          type: 'boolean',
+        }],
+      },
+    );
+
+    expect(prompt).toContain('has_diagram');
+    expect(prompt).toContain('true if the question includes a diagram');
+  });
 });

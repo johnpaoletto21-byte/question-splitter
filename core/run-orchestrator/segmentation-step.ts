@@ -18,6 +18,13 @@
 import type { PreparedPageImage } from '../source-model/types';
 import type { CropTargetProfile } from '../crop-target-profile/types';
 import type { SegmentationResult } from '../segmentation-contract/types';
+import type { ExtractionFieldDefinition } from '../extraction-fields';
+
+export interface SegmentationCallOptions {
+  extractionFields?: ReadonlyArray<ExtractionFieldDefinition>;
+  focusPageNumber?: number;
+  allowedRegionPageNumbers?: ReadonlyArray<number>;
+}
 
 /**
  * Contract for a segmenter function.
@@ -34,6 +41,7 @@ export type Segmenter = (
   pages: PreparedPageImage[],
   profile: CropTargetProfile,
   promptSnapshot: string,
+  options?: SegmentationCallOptions,
 ) => Promise<SegmentationResult>;
 
 /**
@@ -58,8 +66,14 @@ export async function runSegmentationStep(
   profile: CropTargetProfile,
   promptSnapshot: string,
   segmenter: Segmenter,
+  options: SegmentationCallOptions = {},
 ): Promise<SegmentationResult> {
-  const result = await segmenter(runId, pages, profile, promptSnapshot);
+  const hasOptions = options.focusPageNumber !== undefined ||
+    options.extractionFields !== undefined ||
+    options.allowedRegionPageNumbers !== undefined;
+  const result = hasOptions
+    ? await segmenter(runId, pages, profile, promptSnapshot, options)
+    : await segmenter(runId, pages, profile, promptSnapshot);
   // Target order from the normalized result is authoritative — no re-sorting.
   return result;
 }

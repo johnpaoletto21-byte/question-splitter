@@ -73,7 +73,7 @@ function bootstrapRun(request) {
         // Capture an immutable snapshot of the current session prompts (PO-6 / INV-7).
         // All agent steps in this run must use context.promptSnapshot — not the live store.
         // Mid-run UI edits to the store do not affect this frozen snapshot.
-        promptSnapshot: (0, store_1.capturePromptSnapshot)(),
+        promptSnapshot: request.promptSnapshot ?? (0, store_1.capturePromptSnapshot)(),
         started_at: new Date().toISOString(),
     };
 }

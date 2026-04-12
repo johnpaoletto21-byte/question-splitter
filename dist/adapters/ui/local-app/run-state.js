@@ -27,9 +27,12 @@ function createRunRecord(input) {
         status: 'queued',
         runLabel: input.runLabel,
         pdfFileName: input.pdfFileName,
+        outputDir: input.outputDir,
         createdAt: timestamp,
         updatedAt: timestamp,
         logs: [],
+        extractionFields: input.extractionFields ?? [],
+        promptSnapshot: input.promptSnapshot,
     };
     runs.set(record.id, record);
     return record;
@@ -62,13 +65,14 @@ function markRunSucceeded(id, summary) {
     record.summary = summary;
     record.updatedAt = nowIso();
 }
-function markRunFailed(id, error) {
+function markRunFailed(id, error, failureContext) {
     const record = runs.get(id);
     if (!record) {
         return;
     }
     record.status = 'failed';
     record.error = error;
+    record.failureContext = failureContext;
     record.updatedAt = nowIso();
 }
 function resetRunRecordsForTests() {

@@ -42,8 +42,8 @@ export declare function buildGeminiLocalizationRequest(promptText: string, relev
  */
 export declare function unwrapGeminiLocalizationResponse(raw: unknown): unknown;
 /**
- * Filters the full prepared-pages list to only the pages relevant to this target.
- * Pages are returned in the order the target's regions specify (reading order).
+ * Filters the full prepared-pages list to the context needed for this target.
+ * Agent 2 gets the finish page and the immediately previous page when present.
  *
  * If a required page is not found in the prepared list, an error is thrown
  * so the orchestrator can handle the missing-page failure cleanly.

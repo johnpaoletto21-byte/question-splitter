@@ -10,7 +10,25 @@ describe('renderRunDebugMarkdown', () => {
       createdAt: '2024-01-01T00:00:00.000Z',
       updatedAt: '2024-01-01T00:00:01.000Z',
       logs: [{ timestamp: '2024-01-01T00:00:01.000Z', stage: 'agent', message: 'model error' }],
+      extractionFields: [{
+        key: 'has_diagram',
+        label: 'Has Diagram',
+        description: 'true if diagram appears',
+        type: 'boolean',
+      }],
+      promptSnapshot: {
+        agent1Prompt: 'Saved segmenter prompt',
+        agent2Prompt: 'Saved localizer prompt',
+        capturedAt: '2024-01-01T00:00:00.000Z',
+      },
       error: 'Gemini failed',
+      failureContext: {
+        segmentationWindow: {
+          focusPageNumber: 5,
+          pageNumbers: [4, 5, 6],
+          allowedRegionPageNumbers: [4, 5],
+        },
+      },
     };
     const config: LocalConfig = {
       GEMINI_API_KEY: 'secret-key',
@@ -23,6 +41,12 @@ describe('renderRunDebugMarkdown', () => {
     expect(markdown).toContain('# Question Cropper Debug Package');
     expect(markdown).toContain('local_run_debug');
     expect(markdown).toContain('gemini-3.1-flash-lite-preview');
+    expect(markdown).toContain('## Prompt Snapshot');
+    expect(markdown).toContain('Saved segmenter prompt');
+    expect(markdown).toContain('Saved localizer prompt');
+    expect(markdown).toContain('has_diagram');
+    expect(markdown).toContain('focusPageNumber');
+    expect(markdown).toContain('allowedRegionPageNumbers');
     expect(markdown).toContain('model error');
     expect(markdown).toContain('[REDACTED]');
     expect(markdown).not.toContain('secret-key');

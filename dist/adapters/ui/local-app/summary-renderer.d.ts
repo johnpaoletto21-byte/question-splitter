@@ -18,6 +18,7 @@
  *   - Per-row container:   data-testid="summary-row-{target_id}"
  *   - Per-row status:      data-testid="summary-row-status-{target_id}"
  *   - Drive URL anchor:    data-testid="summary-row-drive-url-{target_id}"
+ *   - AI comments:        data-testid="summary-row-ai-comments-{target_id}"
  *   - Agent 1 review note: data-testid="summary-row-review-comment-{target_id}"
  *   - Agent 2 review note: data-testid="summary-row-agent2-review-comment-{target_id}"
  *   - Failure code:        data-testid="summary-row-failure-code-{target_id}"

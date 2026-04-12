@@ -24,7 +24,7 @@ exports.applyFinalResultsToSummary = applyFinalResultsToSummary;
  * - Extracts page_numbers from regions[] to avoid re-parsing downstream.
  * - Preserves target order from the segmentation result (reading order).
  */
-function buildRunSummaryFromSegmentation(result) {
+function buildRunSummaryFromSegmentation(result, extractionFields = []) {
     const targets = result.targets.map((t) => {
         const entry = {
             target_id: t.target_id,
@@ -32,6 +32,12 @@ function buildRunSummaryFromSegmentation(result) {
             page_numbers: t.regions.map((r) => r.page_number),
             agent1_status: t.review_comment !== undefined ? 'needs_review' : 'ok',
         };
+        if (t.finish_page_number !== undefined) {
+            entry.finish_page_number = t.finish_page_number;
+        }
+        if (t.extraction_fields !== undefined) {
+            entry.extraction_fields = t.extraction_fields;
+        }
         if (t.review_comment !== undefined) {
             entry.review_comment = t.review_comment;
         }
@@ -39,6 +45,7 @@ function buildRunSummaryFromSegmentation(result) {
     });
     return {
         run_id: result.run_id,
+        ...(extractionFields.length > 0 ? { extraction_fields: [...extractionFields] } : {}),
         targets,
     };
 }
@@ -120,6 +127,12 @@ function applyFinalResultsToSummary(state, rows) {
             if (row.drive_url !== undefined) {
                 updated.drive_url = row.drive_url;
             }
+            if (row.drive_file_id !== undefined) {
+                updated.drive_file_id = row.drive_file_id;
+            }
+            if (row.local_output_path !== undefined) {
+                updated.local_output_path = row.local_output_path;
+            }
             updatedTargets[idx] = updated;
         }
         else {
@@ -129,6 +142,9 @@ function applyFinalResultsToSummary(state, rows) {
                 final_status: 'failed',
                 failure_code: row.failure_code,
                 failure_message: row.failure_message,
+                ...(row.local_output_path !== undefined
+                    ? { local_output_path: row.local_output_path }
+                    : {}),
             };
         }
     }

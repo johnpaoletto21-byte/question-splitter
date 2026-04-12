@@ -8,6 +8,7 @@ function makeRecord(overrides: Partial<LocalRunRecord> = {}): LocalRunRecord {
     createdAt: '2024-01-01T00:00:00.000Z',
     updatedAt: '2024-01-01T00:00:01.000Z',
     logs: [{ timestamp: '2024-01-01T00:00:01.000Z', stage: 'render', message: 'Rendered pages' }],
+    extractionFields: [],
     ...overrides,
   };
 }
@@ -20,6 +21,10 @@ describe('renderRunFormHtml', () => {
     expect(html).toContain('name="pdfFile"');
     expect(html).toContain('data-testid="run-start-button"');
     expect(html).toContain('href="/prompt-edit"');
+    expect(html).toContain('data-testid="extraction-fields"');
+    expect(html).toContain('data-testid="add-extraction-field-button"');
+    expect(html).toContain('extractionFieldName_');
+    expect(html).toContain('extractionFieldDescription_');
   });
 
   it('shows missing config and disables upload controls', () => {

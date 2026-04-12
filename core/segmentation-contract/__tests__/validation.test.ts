@@ -174,6 +174,69 @@ describe('validateSegmentationTarget', () => {
       }),
     );
   });
+
+  it('accepts finish_page_number and configured boolean extraction fields', () => {
+    const result = validateSegmentationTarget(
+      {
+        ...validTarget,
+        finish_page_number: 1,
+        extraction_fields: { has_diagram: true },
+      },
+      0,
+      2,
+      {
+        focusPageNumber: 1,
+        extractionFields: [{
+          key: 'has_diagram',
+          label: 'Has Diagram',
+          description: 'true if diagram appears',
+          type: 'boolean',
+        }],
+      },
+    );
+
+    expect(result.finish_page_number).toBe(1);
+    expect(result.extraction_fields).toEqual({ has_diagram: true });
+  });
+
+  it('rejects targets that do not finish on the focus page', () => {
+    expect(() => validateSegmentationTarget(
+      {
+        ...validTarget,
+        finish_page_number: 2,
+      },
+      0,
+      2,
+      { focusPageNumber: 1 },
+    )).toThrow(expect.objectContaining({ code: 'SEGMENTATION_SCHEMA_INVALID' }));
+  });
+
+  it('rejects missing or non-boolean configured extraction fields', () => {
+    const fields = [{
+      key: 'has_diagram',
+      label: 'Has Diagram',
+      description: 'true if diagram appears',
+      type: 'boolean' as const,
+    }];
+
+    expect(() => validateSegmentationTarget(
+      { ...validTarget, finish_page_number: 1 },
+      0,
+      2,
+      { focusPageNumber: 1, extractionFields: fields },
+    )).toThrow(expect.objectContaining({ code: 'SEGMENTATION_SCHEMA_INVALID' }));
+
+    expect(() => validateSegmentationTarget(
+      {
+        ...validTarget,
+        finish_page_number: 1,
+        extraction_fields: { has_diagram: 'yes' },
+      },
+      0,
+      2,
+      { focusPageNumber: 1, extractionFields: fields },
+    )).toThrow(expect.objectContaining({ code: 'SEGMENTATION_SCHEMA_INVALID' }));
+  });
 });
 
 // ---------------------------------------------------------------------------

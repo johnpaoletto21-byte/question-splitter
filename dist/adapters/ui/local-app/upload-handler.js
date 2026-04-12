@@ -46,6 +46,7 @@ exports.parsePdfUpload = parsePdfUpload;
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const busboy_1 = __importDefault(require("busboy"));
+const extraction_fields_1 = require("../../../core/extraction-fields");
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 exports.MAX_UPLOAD_BYTES = MAX_UPLOAD_BYTES;
 class PdfUploadError extends Error {
@@ -67,6 +68,12 @@ function isPdf(filename, mimeType) {
     const hasPdfExt = filename.toLowerCase().endsWith('.pdf');
     return hasPdfExt && (mimeType === 'application/pdf' || mimeType === 'application/octet-stream');
 }
+function setFieldRowValue(rows, index, key, value) {
+    if (!rows[index]) {
+        rows[index] = {};
+    }
+    rows[index][key] = value;
+}
 function parsePdfUpload(req, outputDir) {
     const contentType = req.headers['content-type'] ?? '';
     if (!contentType.includes('multipart/form-data')) {
@@ -83,6 +90,7 @@ function parsePdfUpload(req, outputDir) {
             },
         });
         let runLabel;
+        const rawExtractionFieldRows = [];
         let fileSeen = false;
         let uploadPath;
         let originalFileName = '';
@@ -105,6 +113,16 @@ function parsePdfUpload(req, outputDir) {
             if (name === 'runLabel') {
                 const trimmed = value.trim();
                 runLabel = trimmed === '' ? undefined : trimmed.slice(0, 120);
+                return;
+            }
+            const fieldNameMatch = name.match(/^extractionFieldName_(\d+)$/);
+            if (fieldNameMatch) {
+                setFieldRowValue(rawExtractionFieldRows, Number(fieldNameMatch[1]), 'name', value);
+                return;
+            }
+            const fieldDescriptionMatch = name.match(/^extractionFieldDescription_(\d+)$/);
+            if (fieldDescriptionMatch) {
+                setFieldRowValue(rawExtractionFieldRows, Number(fieldDescriptionMatch[1]), 'description', value);
             }
         });
         bb.on('file', (fieldName, file, info) => {
@@ -154,11 +172,22 @@ function parsePdfUpload(req, outputDir) {
                 if (settled) {
                     return;
                 }
+                let extractionFields;
+                try {
+                    extractionFields = (0, extraction_fields_1.parseExtractionFieldDefinitions)(rawExtractionFieldRows);
+                }
+                catch (err) {
+                    if (err instanceof extraction_fields_1.ExtractionFieldDefinitionError) {
+                        throw new PdfUploadError(err.code, err.message);
+                    }
+                    throw err;
+                }
                 settled = true;
                 resolve({
                     pdfFilePath: uploadPath,
                     originalFileName,
                     runLabel,
+                    extractionFields,
                 });
             })
                 .catch(fail);

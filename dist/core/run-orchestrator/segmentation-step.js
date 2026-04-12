@@ -33,8 +33,13 @@ exports.runSegmentationStep = runSegmentationStep;
  * @returns              Normalized SegmentationResult; target order is authoritative.
  * @throws               Re-throws any error from the segmenter.
  */
-async function runSegmentationStep(runId, pages, profile, promptSnapshot, segmenter) {
-    const result = await segmenter(runId, pages, profile, promptSnapshot);
+async function runSegmentationStep(runId, pages, profile, promptSnapshot, segmenter, options = {}) {
+    const hasOptions = options.focusPageNumber !== undefined ||
+        options.extractionFields !== undefined ||
+        options.allowedRegionPageNumbers !== undefined;
+    const result = hasOptions
+        ? await segmenter(runId, pages, profile, promptSnapshot, options)
+        : await segmenter(runId, pages, profile, promptSnapshot);
     // Target order from the normalized result is authoritative — no re-sorting.
     return result;
 }

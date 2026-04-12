@@ -8,6 +8,14 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type * as http from 'http';
 import busboy from 'busboy';
+import {
+  parseExtractionFieldDefinitions,
+  ExtractionFieldDefinitionError,
+} from '../../../core/extraction-fields';
+import type {
+  ExtractionFieldDefinition,
+  RawExtractionFieldInput,
+} from '../../../core/extraction-fields';
 
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
@@ -15,6 +23,7 @@ export interface ParsedPdfUpload {
   pdfFilePath: string;
   originalFileName: string;
   runLabel?: string;
+  extractionFields: ExtractionFieldDefinition[];
 }
 
 export class PdfUploadError extends Error {
@@ -38,6 +47,18 @@ function safeFileName(raw: string): string {
 function isPdf(filename: string, mimeType: string): boolean {
   const hasPdfExt = filename.toLowerCase().endsWith('.pdf');
   return hasPdfExt && (mimeType === 'application/pdf' || mimeType === 'application/octet-stream');
+}
+
+function setFieldRowValue(
+  rows: RawExtractionFieldInput[],
+  index: number,
+  key: keyof RawExtractionFieldInput,
+  value: string,
+): void {
+  if (!rows[index]) {
+    rows[index] = {};
+  }
+  rows[index][key] = value;
 }
 
 export function parsePdfUpload(
@@ -65,6 +86,7 @@ export function parsePdfUpload(
     });
 
     let runLabel: string | undefined;
+    const rawExtractionFieldRows: RawExtractionFieldInput[] = [];
     let fileSeen = false;
     let uploadPath: string | undefined;
     let originalFileName = '';
@@ -90,6 +112,23 @@ export function parsePdfUpload(
       if (name === 'runLabel') {
         const trimmed = value.trim();
         runLabel = trimmed === '' ? undefined : trimmed.slice(0, 120);
+        return;
+      }
+
+      const fieldNameMatch = name.match(/^extractionFieldName_(\d+)$/);
+      if (fieldNameMatch) {
+        setFieldRowValue(rawExtractionFieldRows, Number(fieldNameMatch[1]), 'name', value);
+        return;
+      }
+
+      const fieldDescriptionMatch = name.match(/^extractionFieldDescription_(\d+)$/);
+      if (fieldDescriptionMatch) {
+        setFieldRowValue(
+          rawExtractionFieldRows,
+          Number(fieldDescriptionMatch[1]),
+          'description',
+          value,
+        );
       }
     });
 
@@ -157,11 +196,21 @@ export function parsePdfUpload(
           if (settled) {
             return;
           }
+          let extractionFields: ExtractionFieldDefinition[];
+          try {
+            extractionFields = parseExtractionFieldDefinitions(rawExtractionFieldRows);
+          } catch (err) {
+            if (err instanceof ExtractionFieldDefinitionError) {
+              throw new PdfUploadError(err.code, err.message);
+            }
+            throw err;
+          }
           settled = true;
           resolve({
             pdfFilePath: uploadPath!,
             originalFileName,
             runLabel,
+            extractionFields,
           });
         })
         .catch(fail);

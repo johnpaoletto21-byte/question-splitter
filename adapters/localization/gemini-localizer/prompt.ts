@@ -47,6 +47,8 @@ export function buildLocalizationPrompt(
 ## Run Context
 - Target ID: ${target.target_id}
 - Target type: ${profile.target_type}
+- Finish page: ${target.finish_page_number ?? Math.max(...target.regions.map((r) => r.page_number))}
+- You may receive the previous page as context. Return bbox entries only for the page regions listed below.
 - Page regions to localize (in order):
 ${regionList}
 `;

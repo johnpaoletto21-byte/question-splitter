@@ -15,6 +15,7 @@ import type { SegmentationResult } from '../segmentation-contract/types';
 import type { LocalizationResult } from '../localization-contract/types';
 import type { FinalResultRow } from '../result-model/types';
 import type { RunSummaryState } from './types';
+import type { ExtractionFieldDefinition } from '../extraction-fields';
 /**
  * Builds a RunSummaryState from a normalized SegmentationResult.
  *
@@ -23,7 +24,7 @@ import type { RunSummaryState } from './types';
  * - Extracts page_numbers from regions[] to avoid re-parsing downstream.
  * - Preserves target order from the segmentation result (reading order).
  */
-export declare function buildRunSummaryFromSegmentation(result: SegmentationResult): RunSummaryState;
+export declare function buildRunSummaryFromSegmentation(result: SegmentationResult, extractionFields?: ReadonlyArray<ExtractionFieldDefinition>): RunSummaryState;
 /**
  * Returns a new RunSummaryState with the target entry for the given
  * LocalizationResult updated to include Agent 2 status fields.

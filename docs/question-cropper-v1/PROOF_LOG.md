@@ -1351,3 +1351,148 @@ Targeted tests added:
   - The runner uses existing normalized contracts and provider adapters.
   - The only new dependency is `busboy` for multipart parsing.
   - Run history remains in memory only, matching the single-user local-app assumption.
+
+---
+
+## Batch: Windowed Extraction With Custom Boolean Fields And Local Preview Review UI
+
+### Intent
+- Technical: Add run-scoped boolean extraction fields, window Agent 1 over focus pages, constrain Agent 2 to the finish page plus previous page, and render a review table with Drive links, local image previews, AI comments, and dynamic field columns.
+- Plain version: The user can label a run with custom Yes/No fields, get more stable page-boundary extraction, and review the finished crops directly in the local summary page.
+
+### Boundaries
+- Browser field collection and local preview serving stay in `adapters/ui/local-app/**`.
+- Gemini-specific schema, prompt context, and parser behavior stay in `adapters/segmentation/gemini-segmenter/**`.
+- Window orchestration stays in `adapters/run-pipeline/**`.
+- Core remains provider-clean: it owns normalized types, validation, summary state, and injected stage contracts only.
+- Agent 2 does not classify custom fields.
+
+### Files changed
+- `core/extraction-fields/**` — run-scoped boolean field definition parsing and validation.
+- `core/segmentation-contract/**` — optional `finish_page_number` and `extraction_fields` with stricter validation when a focus page/custom fields are supplied.
+- `adapters/segmentation/gemini-segmenter/**` — dynamic Agent 1 response schema, focus-page prompt context, extraction-field prompt context, and parser validation options.
+- `adapters/run-pipeline/page-windows.ts` and `adapters/run-pipeline/full-pipeline-runner.ts` — 3-page Agent 1 focus windows, merged global IDs, and Agent 2 previous+finish-page context.
+- `adapters/localization/gemini-localizer/**` — one-target Agent 2 calls now receive only the target finish page and previous page when available.
+- `core/run-summary/**` and `adapters/ui/local-app/summary-renderer.ts` — summary state and review table columns for finish page, Drive URL, local preview, AI comments, and dynamic booleans.
+- `adapters/ui/local-app/preview-server.ts`, `run-renderer.ts`, `run-state.ts`, `upload-handler.ts`, `debug-package.ts` — field upload, run-state snapshotting, debug package field evidence, and safe run-scoped preview image route.
+
+### Files confirmed unchanged
+- `core/result-model/**` remains the final result-row contract; review comments stay in summary state only.
+- `core/crop-engine/**` remains responsible for bbox validation/conversion; no prompt-driven crop padding or classification was added there.
+- Google Drive upload remains the upload adapter; local previews are served from already-produced output files and do not replace Drive URLs.
+
+### Invariants checked
+- Agent 1 owns segmentation and custom boolean classification.
+- Agent 2 owns localization only and cannot add, remove, or reorder regions.
+- Max target span remains two pages; three-page context is only context, not output shape.
+- First and last pages produce bounded windows: `[1, 2]`, `[last - 1, last]`, or `[1]` for one-page PDFs.
+- Local preview routes resolve by run record and target ID; caller-supplied filesystem paths are not accepted.
+- Existing non-windowed segmentation-step callers still work without an empty options argument.
+
+### Proof obligations
+- Prove Agent 1 schema and prompt include configured boolean fields.
+- Prove Agent 1 windows focus on finish page `N` and validate returned `finish_page_number`.
+- Prove Agent 2 context selection uses `[N - 1, N]` or `[1]`.
+- Prove custom fields survive from upload through run state, runner input, summary state, debug package, and review UI.
+- Prove local preview images render from local output paths while Drive URLs remain separate.
+
+### Grep proofs
+```bash
+$ rg -n "buildGeminiSegmentationSchema|extraction_fields|Focus Page Rule" adapters/segmentation/gemini-segmenter core/segmentation-contract
+$ rg -n "buildSegmentationPageWindows|selectLocalizationContextPages|Running Agent 1 segmentation in page windows" adapters/run-pipeline
+$ rg -n "summary-row-preview|preview_url|Configured extraction fields|debug.md" adapters/ui/local-app core/run-summary
+$ rg -n "runSegmentationStep" core/run-orchestrator adapters/run-pipeline
+```
+
+### Test / smoke evidence
+```bash
+$ npm run typecheck
+> tsc --project tsconfig.json --noEmit
+
+$ npm test -- --runInBand --testPathPattern='(core/extraction-fields|core/segmentation-contract|adapters/segmentation/gemini-segmenter|adapters/localization/gemini-localizer|adapters/run-pipeline|adapters/ui/local-app)'
+Test Suites: 16 passed, 16 total
+Tests:       205 passed, 205 total
+
+$ npm test -- --runInBand
+Test Suites: 37 passed, 37 total
+Tests:       463 passed, 463 total
+
+$ npm run build
+> tsc --project tsconfig.json
+
+$ PREVIEW_PORT=3999 npm run app
+Preview server running.
+Run UI:      http://localhost:3999/run
+Summary UI:  http://localhost:3999/summary-preview
+Prompt edit: http://localhost:3999/prompt-edit
+
+$ curl -sS -i http://127.0.0.1:3999/ | sed -n '1,4p'
+HTTP/1.1 303 See Other
+Location: /run
+
+$ curl -sS -i http://127.0.0.1:3999/run | sed -n '1,4p'
+HTTP/1.1 200 OK
+Content-Type: text/html; charset=utf-8
+
+$ curl -sS -i http://127.0.0.1:3999/summary-preview | sed -n '1,4p'
+HTTP/1.1 200 OK
+Content-Type: text/html; charset=utf-8
+```
+
+### Reviewer conclusion
+- Status: PASS
+- Notes:
+  - The run UI now snapshots custom boolean fields and passes them to Agent 1 only.
+  - Agent 1 runs in bounded focus windows and merged outputs are assigned stable global target IDs.
+  - Agent 2 runs one target at a time with only the finish page plus previous page.
+  - The summary page now functions as a review table with local thumbnails, Drive links, combined AI comments, and dynamic boolean columns.
+  - Provider-specific logic remains in adapters; core contracts remain provider-clean.
+
+---
+
+## Batch: Strict Agent 1 Focus-Page Enforcement And Repair Retry
+
+### Intent
+- Technical: Prevent impossible Agent 1 focus-window outputs by constraining Gemini's response schema and retrying schema-invalid segmentation responses with a correction prompt.
+- Plain version: If Agent 1 says a question finishes on page 5, it can no longer report page 1 as the only region; the app asks it to repair that exact mistake before failing.
+
+### Boundaries
+- Schema, prompt, and retry behavior stay in `adapters/segmentation/gemini-segmenter/**`.
+- Window metadata and logging stay in `adapters/run-pipeline/**`.
+- Debug display stays in `adapters/ui/local-app/**`.
+- No manual retry/checkpoint UI is added in this batch.
+
+### Invariants checked
+- Agent 1 response schema constrains `finish_page_number` to the focus page in focus mode.
+- Agent 1 response schema constrains `regions[].page_number` to allowed output pages only.
+- HTTP/API failures are not treated as repairable schema errors.
+- Failure debug metadata contains the focus page, provided window pages, and allowed output region pages without tokens or image payloads.
+
+### Grep proofs
+```bash
+$ rg -n "MAX_SEGMENTATION_REPAIR_RETRIES|Correction Required|allowed output region pages|enum|allowedRegionPageNumbers|failureContext" adapters core dist
+```
+
+### Test / smoke evidence
+```bash
+$ npm run typecheck
+> tsc --project tsconfig.json --noEmit
+
+$ npm test -- --runInBand --testPathPattern='(adapters/segmentation/gemini-segmenter|adapters/run-pipeline|adapters/ui/local-app/__tests__/debug-package|core/run-orchestrator/__tests__/segmentation-step)'
+Test Suites: 7 passed, 7 total
+Tests:       66 passed, 66 total
+
+$ npm test -- --runInBand
+Test Suites: 37 passed, 37 total
+Tests:       472 passed, 472 total
+
+$ npm run build
+> tsc --project tsconfig.json
+```
+
+### Reviewer conclusion
+- Status: PASS
+- Notes:
+  - Focus-window schema constraints now block common page-number drift before parsing.
+  - Schema-invalid Agent 1 responses get two same-window repair attempts.
+  - Debug packages can identify the failed focus window if repair still fails.

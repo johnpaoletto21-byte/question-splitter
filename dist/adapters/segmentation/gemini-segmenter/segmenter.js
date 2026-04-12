@@ -28,6 +28,7 @@ const prompt_1 = require("./prompt");
 const parser_1 = require("./parser");
 const schema_1 = require("./schema");
 exports.DEFAULT_GEMINI_SEGMENTER_MODEL = 'gemini-3.1-flash-lite-preview';
+const MAX_SEGMENTATION_REPAIR_RETRIES = 2;
 // ---------------------------------------------------------------------------
 // Default HTTP client (native fetch, Node.js 18+)
 // ---------------------------------------------------------------------------
@@ -63,7 +64,7 @@ function encodePageImageAsBase64(imagePath) {
  * Uses multimodal content parts: text prompt first, then one inlineData
  * image part per page in order.
  */
-function buildGeminiRequest(promptText, pages, encodeFn = encodePageImageAsBase64) {
+function buildGeminiRequest(promptText, pages, encodeFn = encodePageImageAsBase64, responseSchema = schema_1.GEMINI_SEGMENTATION_SCHEMA) {
     const parts = [{ text: promptText }];
     for (const page of pages) {
         parts.push({
@@ -77,7 +78,7 @@ function buildGeminiRequest(promptText, pages, encodeFn = encodePageImageAsBase6
         contents: [{ parts }],
         generationConfig: {
             responseMimeType: 'application/json',
-            responseSchema: schema_1.GEMINI_SEGMENTATION_SCHEMA,
+            responseSchema,
         },
     };
 }
@@ -116,6 +117,36 @@ function unwrapGeminiResponse(raw) {
         throw new Error(`Gemini response text is not valid JSON: ${text}`);
     }
 }
+function isSegmentationSchemaError(err) {
+    return (typeof err === 'object' &&
+        err !== null &&
+        err['code'] === 'SEGMENTATION_SCHEMA_INVALID');
+}
+function buildRepairPrompt(input) {
+    const focusLine = input.focusPageNumber === undefined
+        ? '- No focus page was configured for this call.'
+        : `- Focus page: ${input.focusPageNumber}`;
+    const allowedLine = input.allowedRegionPageNumbers.length === 0
+        ? '- Allowed output region page_numbers: use only pages explicitly listed in the run context.'
+        : `- Allowed output region page_numbers: ${input.allowedRegionPageNumbers.join(', ')}`;
+    return `${input.originalPrompt}
+
+## Correction Required
+Your previous Agent 1 segmentation JSON failed validation:
+${input.validationMessage}
+
+Return corrected JSON for the same images and same run context.
+${focusLine}
+${allowedLine}
+- If no target ends on the focus page, return {"targets":[]}.
+- Do not infer page_number from image order. Use the listed page_number labels exactly.
+- Every returned target must have regions that include finish_page_number.
+- Do not include context-only next pages in regions.
+
+Previous invalid JSON:
+${JSON.stringify(input.invalidOutput, null, 2)}
+`;
+}
 // ---------------------------------------------------------------------------
 // Main adapter function
 // ---------------------------------------------------------------------------
@@ -135,16 +166,65 @@ function unwrapGeminiResponse(raw) {
  * @param encodeFn       Injectable image encoder (defaults to readFileSync+base64).
  * @returns              Normalized SegmentationResult with targets in reading order.
  */
-async function segmentPages(runId, pages, profile, promptSnapshot, config, httpPost = defaultHttpPost, encodeFn = encodePageImageAsBase64) {
+async function segmentPages(runId, pages, profile, promptSnapshot, config, httpPost = defaultHttpPost, encodeFn = encodePageImageAsBase64, options = {}) {
     const model = config.model ?? exports.DEFAULT_GEMINI_SEGMENTER_MODEL;
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent` +
         `?key=${config.apiKey}`;
-    const promptText = (0, prompt_1.buildSegmentationPrompt)(pages, profile, promptSnapshot);
-    const requestBody = buildGeminiRequest(promptText, pages, encodeFn);
-    const rawResponse = await httpPost(url, requestBody, {
-        'Content-Type': 'application/json',
+    const extractionFields = options.extractionFields ?? [];
+    const allowedRegionPageNumbers = options.allowedRegionPageNumbers ?? [];
+    const promptText = (0, prompt_1.buildSegmentationPrompt)(pages, profile, promptSnapshot, {
+        extractionFields,
+        focusPageNumber: options.focusPageNumber,
+        allowedRegionPageNumbers,
     });
-    const parsedJson = unwrapGeminiResponse(rawResponse);
-    return (0, parser_1.parseGeminiSegmentationResponse)(parsedJson, runId, profile.max_regions_per_target);
+    const responseSchema = (0, schema_1.buildGeminiSegmentationSchema)({
+        extractionFields,
+        focusPageNumber: options.focusPageNumber,
+        allowedRegionPageNumbers,
+        requireFinishPage: options.focusPageNumber !== undefined,
+    });
+    const maxRepairRetries = options.maxRepairRetries ?? MAX_SEGMENTATION_REPAIR_RETRIES;
+    let currentPrompt = promptText;
+    let initialValidationMessage = '';
+    for (let attempt = 0; attempt <= maxRepairRetries; attempt++) {
+        const requestBody = buildGeminiRequest(currentPrompt, pages, encodeFn, responseSchema);
+        const rawResponse = await httpPost(url, requestBody, {
+            'Content-Type': 'application/json',
+        });
+        const parsedJson = unwrapGeminiResponse(rawResponse);
+        try {
+            return (0, parser_1.parseGeminiSegmentationResponse)(parsedJson, runId, profile.max_regions_per_target, {
+                extractionFields,
+                focusPageNumber: options.focusPageNumber,
+            });
+        }
+        catch (err) {
+            if (!isSegmentationSchemaError(err)) {
+                throw err;
+            }
+            const validationMessage = String(err['message'] ?? 'Segmentation schema invalid');
+            if (initialValidationMessage === '') {
+                initialValidationMessage = validationMessage;
+            }
+            if (attempt === maxRepairRetries) {
+                throw {
+                    ...err,
+                    message: `${validationMessage} ` +
+                        `(after ${maxRepairRetries} retries; ` +
+                        `initial validation error: ${initialValidationMessage}; ` +
+                        `focus page: ${options.focusPageNumber ?? 'none'}; ` +
+                        `allowed output region pages: ${allowedRegionPageNumbers.join(', ') || 'not constrained'})`,
+                };
+            }
+            currentPrompt = buildRepairPrompt({
+                originalPrompt: promptText,
+                validationMessage,
+                invalidOutput: parsedJson,
+                focusPageNumber: options.focusPageNumber,
+                allowedRegionPageNumbers,
+            });
+        }
+    }
+    throw new Error('segmentPages: unreachable retry loop exit');
 }
 //# sourceMappingURL=segmenter.js.map

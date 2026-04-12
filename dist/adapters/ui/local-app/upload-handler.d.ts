@@ -4,11 +4,13 @@
  * Multipart PDF upload parsing for the local app.
  */
 import type * as http from 'http';
+import type { ExtractionFieldDefinition } from '../../../core/extraction-fields';
 declare const MAX_UPLOAD_BYTES: number;
 export interface ParsedPdfUpload {
     pdfFilePath: string;
     originalFileName: string;
     runLabel?: string;
+    extractionFields: ExtractionFieldDefinition[];
 }
 export declare class PdfUploadError extends Error {
     readonly code: string;

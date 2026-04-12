@@ -4,6 +4,8 @@
  * In-memory run state for the single-user local app.
  */
 import type { RunSummaryState } from '../../../core/run-summary/types';
+import type { ExtractionFieldDefinition } from '../../../core/extraction-fields';
+import type { PromptSnapshot } from '../../../core/prompt-config-store/types';
 export type LocalRunStatus = 'queued' | 'running' | 'succeeded' | 'failed';
 export interface LocalRunLogEntry {
     timestamp: string;
@@ -15,20 +17,27 @@ export interface LocalRunRecord {
     status: LocalRunStatus;
     runLabel?: string;
     pdfFileName?: string;
+    outputDir?: string;
     createdAt: string;
     updatedAt: string;
     logs: LocalRunLogEntry[];
+    extractionFields: ExtractionFieldDefinition[];
+    promptSnapshot?: PromptSnapshot;
     summary?: RunSummaryState;
     error?: string;
+    failureContext?: unknown;
 }
 export declare function createRunRecord(input: {
     runLabel?: string;
     pdfFileName?: string;
+    outputDir?: string;
+    extractionFields?: ExtractionFieldDefinition[];
+    promptSnapshot?: PromptSnapshot;
 }): LocalRunRecord;
 export declare function getRunRecord(id: string): LocalRunRecord | undefined;
 export declare function appendRunLog(id: string, stage: string, message: string, timestamp?: string): void;
 export declare function markRunStatus(id: string, status: LocalRunStatus): void;
 export declare function markRunSucceeded(id: string, summary: RunSummaryState): void;
-export declare function markRunFailed(id: string, error: string): void;
+export declare function markRunFailed(id: string, error: string, failureContext?: unknown): void;
 export declare function resetRunRecordsForTests(): void;
 //# sourceMappingURL=run-state.d.ts.map

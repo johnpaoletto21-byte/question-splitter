@@ -35,9 +35,12 @@ function renderRunDebugMarkdown(input) {
         status: record.status,
         runLabel: record.runLabel,
         pdfFileName: record.pdfFileName,
+        outputDir: record.outputDir,
+        extractionFields: record.extractionFields,
         createdAt: record.createdAt,
         updatedAt: record.updatedAt,
         error: record.error,
+        failureContext: record.failureContext,
     }));
     lines.push('');
     lines.push(`## Gemini Models`);
@@ -45,6 +48,9 @@ function renderRunDebugMarkdown(input) {
         agent1Segmenter: segmenter_1.DEFAULT_GEMINI_SEGMENTER_MODEL,
         agent2Localizer: localizer_1.DEFAULT_GEMINI_LOCALIZER_MODEL,
     }));
+    lines.push('');
+    lines.push(`## Prompt Snapshot`);
+    lines.push(record.promptSnapshot ? fencedJson(record.promptSnapshot) : 'No prompt snapshot captured for this run.');
     lines.push('');
     lines.push(`## Config`);
     lines.push(fencedJson({
