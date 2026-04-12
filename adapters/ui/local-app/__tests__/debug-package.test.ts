@@ -18,6 +18,7 @@ describe('renderRunDebugMarkdown', () => {
       }],
       promptSnapshot: {
         agent1Prompt: 'Saved segmenter prompt',
+        reviewerPrompt: 'Saved reviewer prompt',
         agent2Prompt: 'Saved localizer prompt',
         capturedAt: '2024-01-01T00:00:00.000Z',
       },

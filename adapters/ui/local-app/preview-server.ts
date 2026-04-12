@@ -44,6 +44,7 @@ import {
   getPromptConfig,
   capturePromptSnapshot,
   setAgent1Prompt,
+  setReviewerPrompt,
   setAgent2Prompt,
 } from '../../../core/prompt-config-store/store';
 import { loadConfig } from '../../config/local-config/loader';
@@ -384,8 +385,10 @@ function createPreviewServer(options: PreviewServerOptions = {}): http.Server {
       readBody(req).then((rawBody) => {
         const params = new URLSearchParams(rawBody);
         const agent1 = params.get('agent1Prompt') ?? '';
+        const reviewer = params.get('reviewerPrompt') ?? '';
         const agent2 = params.get('agent2Prompt') ?? '';
         setAgent1Prompt(agent1);
+        setReviewerPrompt(reviewer);
         setAgent2Prompt(agent2);
         // Redirect back to GET to show the saved state (POST-Redirect-GET pattern).
         res.writeHead(302, { Location: PROMPT_EDIT_PATH });

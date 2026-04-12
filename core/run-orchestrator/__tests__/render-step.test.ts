@@ -41,6 +41,7 @@ function makeContext(sourceCount: number): RunContext {
     activeProfile: V1_ACTIVE_PROFILE,
     promptSnapshot: {
       agent1Prompt: '',
+      reviewerPrompt: '',
       agent2Prompt: '',
       capturedAt: '2026-01-01T00:00:00.000Z',
     },
