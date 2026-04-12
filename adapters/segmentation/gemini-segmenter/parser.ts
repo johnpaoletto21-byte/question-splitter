@@ -89,13 +89,23 @@ export function parseGeminiSegmentationResponse(
   // (reading order). The ID encodes position so downstream sorting is stable.
   const offset = options.targetIdOffset ?? 0;
   const targets = (raw.targets as GeminiRawTarget[]).map((t, i) => {
+    // Gemini may return page numbers as strings when enum constraints are
+    // used (enum is only allowed on STRING-typed fields). Coerce back to
+    // numbers so downstream validation sees the expected integer type.
+    const regions = t.regions.map((r) => ({
+      ...r,
+      page_number: typeof r.page_number === 'string' ? Number(r.page_number) : r.page_number,
+    }));
     const target: Record<string, unknown> = {
       target_id: makeTargetId(offset + i),
       target_type: t.target_type,
-      regions: t.regions,
+      regions,
     };
-    if (typeof t.finish_page_number === 'number') {
-      target['finish_page_number'] = t.finish_page_number;
+    const rawFinish = t.finish_page_number;
+    if (typeof rawFinish === 'number') {
+      target['finish_page_number'] = rawFinish;
+    } else if (typeof rawFinish === 'string') {
+      target['finish_page_number'] = Number(rawFinish);
     }
     if (t.extraction_fields !== undefined) {
       target['extraction_fields'] = t.extraction_fields;

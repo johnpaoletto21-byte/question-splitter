@@ -128,9 +128,9 @@ describe('buildGeminiSegmentationSchema', () => {
     const regionProperties = regionItems['properties'] as Record<string, unknown>;
     const pageNumber = regionProperties['page_number'] as Record<string, unknown>;
 
-    expect(finish['enum']).toEqual([5]);
-    expect(pageNumber['enum']).toEqual([4, 5]);
-    expect(pageNumber['enum']).not.toContain(6);
+    expect(finish['enum']).toEqual(['5']);
+    expect(pageNumber['enum']).toEqual(['4', '5']);
+    expect(pageNumber['enum']).not.toContain('6');
   });
 
   it('restricts first focus-page output regions to page 1', () => {
@@ -147,7 +147,7 @@ describe('buildGeminiSegmentationSchema', () => {
     const regionProperties = regionItems['properties'] as Record<string, unknown>;
     const pageNumber = regionProperties['page_number'] as Record<string, unknown>;
 
-    expect(pageNumber['enum']).toEqual([1]);
+    expect(pageNumber['enum']).toEqual(['1']);
   });
 });
 
