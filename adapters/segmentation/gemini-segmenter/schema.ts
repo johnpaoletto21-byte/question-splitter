@@ -40,14 +40,17 @@ export function buildGeminiSegmentationSchema(input: {
 } = {}): Record<string, unknown> {
   const extractionFields = input.extractionFields ?? [];
   const allowedRegionPageNumbers = input.allowedRegionPageNumbers ?? [];
-  const pageNumberSchema: Record<string, unknown> = {
-    type: 'integer',
-    description: '1-based page number where part of this target appears.',
-    minimum: 1,
-  };
-  if (allowedRegionPageNumbers.length > 0) {
-    pageNumberSchema['enum'] = [...allowedRegionPageNumbers];
-  }
+  const pageNumberSchema: Record<string, unknown> = allowedRegionPageNumbers.length > 0
+    ? {
+        type: 'string',
+        description: '1-based page number where part of this target appears.',
+        enum: allowedRegionPageNumbers.map(String),
+      }
+    : {
+        type: 'integer',
+        description: '1-based page number where part of this target appears.',
+        minimum: 1,
+      };
   const targetProperties: Record<string, unknown> = {
     target_type: {
       type: 'string',
@@ -79,14 +82,17 @@ export function buildGeminiSegmentationSchema(input: {
   const targetRequired = ['target_type', 'regions'];
 
   if (input.requireFinishPage === true) {
-    const finishPageSchema: Record<string, unknown> = {
-      type: 'integer',
-      description: 'The 1-based page number where this target finishes.',
-      minimum: 1,
-    };
-    if (input.focusPageNumber !== undefined) {
-      finishPageSchema['enum'] = [input.focusPageNumber];
-    }
+    const finishPageSchema: Record<string, unknown> = input.focusPageNumber !== undefined
+      ? {
+          type: 'string',
+          description: 'The 1-based page number where this target finishes.',
+          enum: [String(input.focusPageNumber)],
+        }
+      : {
+          type: 'integer',
+          description: 'The 1-based page number where this target finishes.',
+          minimum: 1,
+        };
     targetProperties['finish_page_number'] = finishPageSchema;
     targetRequired.push('finish_page_number');
   }
