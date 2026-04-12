@@ -49,9 +49,19 @@ export interface GeminiRawTarget {
   review_comment?: string;
 }
 
+/**
+ * A page classification as Gemini returns it in structured output.
+ * Used as a safety net to detect phantom targets on non-content pages.
+ */
+export interface GeminiRawPageClassification {
+  page_number: number;
+  classification: string;
+}
+
 /** Top-level shape of the Gemini structured JSON output. */
 export interface GeminiRawSegmentationOutput {
   targets: GeminiRawTarget[];
+  page_classifications?: GeminiRawPageClassification[];
 }
 
 // ---------------------------------------------------------------------------
