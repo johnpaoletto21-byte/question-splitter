@@ -53,6 +53,7 @@ describe('runFullPipeline', () => {
       {
         renderer: async () => [page],
         segmenter: async (runId) => ({ ...segmentation, run_id: runId }),
+        reviewer: async () => null,
         localizer: async (runId) => ({ ...localization, run_id: runId }),
         cropExecutor: async () => path.join(tmpDir, 'q_0001.png'),
         imageStacker: async () => path.join(tmpDir, 'stacked.png'),
@@ -113,6 +114,7 @@ describe('runFullPipeline', () => {
       },
       {
         renderer: async () => pages,
+        reviewer: async () => null,
         segmenter: async (runId, _pages, _profile, _prompt, options?: SegmentationCallOptions) => ({
           run_id: runId,
           targets: [{
@@ -168,6 +170,7 @@ describe('runFullPipeline', () => {
     };
     const promptSnapshot: PromptSnapshot = {
       agent1Prompt: 'queued segmenter prompt',
+      reviewerPrompt: 'queued reviewer prompt',
       agent2Prompt: 'queued localizer prompt',
       capturedAt: '2024-01-01T00:00:00.000Z',
     };
@@ -188,6 +191,7 @@ describe('runFullPipeline', () => {
       },
       {
         renderer: async () => [page],
+        reviewer: async () => null,
         segmenter: async (runId, _pages, _profile, prompt) => {
           seenPrompts.push(prompt);
           return {
@@ -252,6 +256,7 @@ describe('runFullPipeline', () => {
       },
       {
         renderer: async () => pages,
+        reviewer: async () => null,
         segmenter: async (runId, windowPages, _profile, _prompt, options?: SegmentationCallOptions) => {
           segmentCalls.push(windowPages.map((page) => page.page_number));
           allowedCalls.push(options?.allowedRegionPageNumbers);
@@ -322,6 +327,7 @@ describe('runFullPipeline', () => {
       },
       {
         renderer: async () => pages,
+        reviewer: async () => null,
         segmenter: async () => {
           throw {
             code: 'SEGMENTATION_SCHEMA_INVALID',

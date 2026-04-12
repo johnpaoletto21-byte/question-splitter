@@ -105,4 +105,103 @@ describe('page window helpers', () => {
 
     expect(result.targets.map((target) => target.target_id)).toEqual(['q_0001', 'q_0002']);
   });
+
+  it('removes ghost single-page target when multi-page target covers same page', () => {
+    const result = mergeWindowedSegmentationResults('run_test', [
+      {
+        run_id: 'run_test',
+        targets: [{ target_id: 'q_0001', target_type: 'question', regions: [{ page_number: 5 }] }],
+      },
+      {
+        run_id: 'run_test',
+        targets: [{ target_id: 'q_0001', target_type: 'question', regions: [{ page_number: 5 }, { page_number: 6 }] }],
+      },
+    ]);
+
+    expect(result.targets).toHaveLength(1);
+    expect(result.targets[0].target_id).toBe('q_0001');
+    expect(result.targets[0].regions.map((r) => r.page_number)).toEqual([5, 6]);
+  });
+
+  it('keeps both multi-page targets that share one page but are not subsets', () => {
+    const result = mergeWindowedSegmentationResults('run_test', [
+      {
+        run_id: 'run_test',
+        targets: [{ target_id: 'q_0001', target_type: 'question', regions: [{ page_number: 5 }, { page_number: 6 }] }],
+      },
+      {
+        run_id: 'run_test',
+        targets: [{ target_id: 'q_0001', target_type: 'question', regions: [{ page_number: 6 }, { page_number: 7 }] }],
+      },
+    ]);
+
+    expect(result.targets).toHaveLength(2);
+    expect(result.targets[0].regions.map((r) => r.page_number)).toEqual([5, 6]);
+    expect(result.targets[1].regions.map((r) => r.page_number)).toEqual([6, 7]);
+  });
+
+  it('removes multiple ghosts in one pass', () => {
+    const result = mergeWindowedSegmentationResults('run_test', [
+      {
+        run_id: 'run_test',
+        targets: [{ target_id: 'q_0001', target_type: 'question', regions: [{ page_number: 5 }] }],
+      },
+      {
+        run_id: 'run_test',
+        targets: [{ target_id: 'q_0001', target_type: 'question', regions: [{ page_number: 5 }, { page_number: 6 }] }],
+      },
+      {
+        run_id: 'run_test',
+        targets: [{ target_id: 'q_0001', target_type: 'question', regions: [{ page_number: 8 }] }],
+      },
+      {
+        run_id: 'run_test',
+        targets: [{ target_id: 'q_0001', target_type: 'question', regions: [{ page_number: 8 }, { page_number: 9 }] }],
+      },
+    ]);
+
+    expect(result.targets).toHaveLength(2);
+    expect(result.targets[0].regions.map((r) => r.page_number)).toEqual([5, 6]);
+    expect(result.targets[1].regions.map((r) => r.page_number)).toEqual([8, 9]);
+  });
+
+  it('keeps non-overlapping single-page targets', () => {
+    const result = mergeWindowedSegmentationResults('run_test', [
+      {
+        run_id: 'run_test',
+        targets: [{ target_id: 'q_0001', target_type: 'question', regions: [{ page_number: 3 }] }],
+      },
+      {
+        run_id: 'run_test',
+        targets: [{ target_id: 'q_0001', target_type: 'question', regions: [{ page_number: 4 }] }],
+      },
+    ]);
+
+    expect(result.targets).toHaveLength(2);
+  });
+
+  it('reassigns target_ids sequentially after dedup', () => {
+    const result = mergeWindowedSegmentationResults('run_test', [
+      {
+        run_id: 'run_test',
+        targets: [{ target_id: 'q_0001', target_type: 'question', regions: [{ page_number: 3 }] }],
+      },
+      {
+        run_id: 'run_test',
+        targets: [
+          { target_id: 'q_0001', target_type: 'question', regions: [{ page_number: 3 }] },
+          { target_id: 'q_0002', target_type: 'question', regions: [{ page_number: 3 }, { page_number: 4 }] },
+        ],
+      },
+      {
+        run_id: 'run_test',
+        targets: [{ target_id: 'q_0001', target_type: 'question', regions: [{ page_number: 5 }] }],
+      },
+    ]);
+
+    // First page-3-only ghost removed (subset of [3,4]), second page-3-only kept (duplicate pages, same size set — not a strict subset)
+    // Actually both page-3-only targets are strict subsets of [3,4], so both removed
+    expect(result.targets).toHaveLength(2);
+    expect(result.targets.map((t) => t.target_id)).toEqual(['q_0001', 'q_0002']);
+  });
 });

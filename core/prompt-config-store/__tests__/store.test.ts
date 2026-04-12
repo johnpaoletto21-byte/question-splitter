@@ -12,11 +12,12 @@
 import {
   getPromptConfig,
   setAgent1Prompt,
+  setReviewerPrompt,
   setAgent2Prompt,
   capturePromptSnapshot,
   resetPromptConfig,
 } from '../store';
-import { DEFAULT_AGENT1_PROMPT, DEFAULT_AGENT2_PROMPT } from '../default-prompts';
+import { DEFAULT_AGENT1_PROMPT, DEFAULT_REVIEWER_PROMPT, DEFAULT_AGENT2_PROMPT } from '../default-prompts';
 
 beforeEach(() => {
   resetPromptConfig();
@@ -28,6 +29,7 @@ describe('getPromptConfig — defaults', () => {
   it('returns editable default prompt text by default', () => {
     const state = getPromptConfig();
     expect(state.agent1Prompt).toBe(DEFAULT_AGENT1_PROMPT);
+    expect(state.reviewerPrompt).toBe(DEFAULT_REVIEWER_PROMPT);
     expect(state.agent2Prompt).toBe(DEFAULT_AGENT2_PROMPT);
   });
 });
@@ -80,11 +82,13 @@ describe('setAgent1Prompt / setAgent2Prompt — session editing', () => {
 // ── Snapshot capture (PO-6 / INV-7) ─────────────────────────────────────────
 
 describe('capturePromptSnapshot — immutable snapshot at run start', () => {
-  it('snapshot contains agent1Prompt and agent2Prompt at capture time', () => {
+  it('snapshot contains all agent prompts at capture time', () => {
     setAgent1Prompt('A1 at capture');
+    setReviewerPrompt('Rev at capture');
     setAgent2Prompt('A2 at capture');
     const snap = capturePromptSnapshot();
     expect(snap.agent1Prompt).toBe('A1 at capture');
+    expect(snap.reviewerPrompt).toBe('Rev at capture');
     expect(snap.agent2Prompt).toBe('A2 at capture');
   });
 
@@ -138,6 +142,7 @@ describe('capturePromptSnapshot — immutable snapshot at run start', () => {
     // Default state — no edits
     const snap = capturePromptSnapshot();
     expect(snap.agent1Prompt).toBe(DEFAULT_AGENT1_PROMPT);
+    expect(snap.reviewerPrompt).toBe(DEFAULT_REVIEWER_PROMPT);
     expect(snap.agent2Prompt).toBe(DEFAULT_AGENT2_PROMPT);
   });
 });
@@ -145,12 +150,14 @@ describe('capturePromptSnapshot — immutable snapshot at run start', () => {
 // ── Reset utility ─────────────────────────────────────────────────────────────
 
 describe('resetPromptConfig — test utility', () => {
-  it('resets agent1 and agent2 to defaults after edits', () => {
+  it('resets all prompts to defaults after edits', () => {
     setAgent1Prompt('dirty');
+    setReviewerPrompt('dirty too');
     setAgent2Prompt('also dirty');
     resetPromptConfig();
     const state = getPromptConfig();
     expect(state.agent1Prompt).toBe(DEFAULT_AGENT1_PROMPT);
+    expect(state.reviewerPrompt).toBe(DEFAULT_REVIEWER_PROMPT);
     expect(state.agent2Prompt).toBe(DEFAULT_AGENT2_PROMPT);
   });
 });
