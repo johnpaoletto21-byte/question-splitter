@@ -13,7 +13,7 @@
  */
 
 import type { PromptConfigState, PromptSnapshot } from './types';
-import { DEFAULT_AGENT1_PROMPT, DEFAULT_AGENT2_PROMPT } from './default-prompts';
+import { DEFAULT_AGENT1_PROMPT, DEFAULT_REVIEWER_PROMPT, DEFAULT_AGENT2_PROMPT } from './default-prompts';
 
 /**
  * Default prompts for both agents.
@@ -21,6 +21,7 @@ import { DEFAULT_AGENT1_PROMPT, DEFAULT_AGENT2_PROMPT } from './default-prompts'
  */
 const DEFAULT_STATE: PromptConfigState = {
   agent1Prompt: DEFAULT_AGENT1_PROMPT,
+  reviewerPrompt: DEFAULT_REVIEWER_PROMPT,
   agent2Prompt: DEFAULT_AGENT2_PROMPT,
 };
 
@@ -44,6 +45,14 @@ export function setAgent1Prompt(prompt: string): void {
 }
 
 /**
+ * Updates the Agent 1.5 (reviewer) prompt for the current session.
+ * Does not affect any active run — runs use their start-time snapshot.
+ */
+export function setReviewerPrompt(prompt: string): void {
+  _state = { ..._state, reviewerPrompt: prompt };
+}
+
+/**
  * Updates the Agent 2 (localizer) prompt for the current session.
  * Does not affect any active run — runs use their start-time snapshot.
  */
@@ -63,6 +72,7 @@ export function setAgent2Prompt(prompt: string): void {
 export function capturePromptSnapshot(): PromptSnapshot {
   return Object.freeze({
     agent1Prompt: _state.agent1Prompt,
+    reviewerPrompt: _state.reviewerPrompt,
     agent2Prompt: _state.agent2Prompt,
     capturedAt: new Date().toISOString(),
   });

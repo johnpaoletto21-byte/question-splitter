@@ -48,6 +48,7 @@ describe('bootstrapRun — run context creation', () => {
   it('uses a caller-supplied promptSnapshot when provided', () => {
     const promptSnapshot = {
       agent1Prompt: 'provided agent 1',
+      reviewerPrompt: 'provided reviewer',
       agent2Prompt: 'provided agent 2',
       capturedAt: '2024-01-01T00:00:00.000Z',
     };

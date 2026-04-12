@@ -195,7 +195,7 @@ describe('preview server real run routes', () => {
       port,
       'POST',
       '/prompt-edit',
-      'agent1Prompt=Browser%20segmenter%20prompt&agent2Prompt=Browser%20localizer%20prompt',
+      'agent1Prompt=Browser%20segmenter%20prompt&reviewerPrompt=Browser%20reviewer%20prompt&agent2Prompt=Browser%20localizer%20prompt',
     );
     expect(save.statusCode).toBe(302);
 

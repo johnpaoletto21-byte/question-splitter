@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import type { LocalConfig } from '../config/local-config/types';
 import { renderPdfSource } from '../source-preparation/pdf-renderer';
 import { segmentPages } from '../segmentation/gemini-segmenter';
+import { reviewSegmentation } from '../segmentation-review/gemini-reviewer';
 import { localizeTarget } from '../localization/gemini-localizer';
 import { uploadToDrive } from '../upload/google-drive';
 import { makeCanvasCropExecutor, makeCanvasImageStacker } from '../image-processing';
@@ -15,6 +16,7 @@ import {
   bootstrapRun,
   renderAllSources,
   runSegmentationStep,
+  runReviewStep,
   runCropStep,
   runCompositionStep,
   runUploadStep,
@@ -22,6 +24,7 @@ import {
 import type {
   PageRenderer,
   Segmenter,
+  SegmentationReviewer,
   Localizer,
   CropExecutor,
   ImageStackerFn,
@@ -63,6 +66,7 @@ export interface RunFullPipelineInput {
 export interface RunFullPipelineDependencies {
   renderer?: PageRenderer;
   segmenter?: Segmenter;
+  reviewer?: SegmentationReviewer;
   localizer?: Localizer;
   cropExecutor?: CropExecutor;
   imageStacker?: ImageStackerFn;
@@ -192,7 +196,45 @@ export async function runFullPipeline(
   const segmentation = mergeWindowedSegmentationResults(rendered.run_id, windowResults);
   emit(input.onLog, 'segmentation', `Agent 1 found ${segmentation.targets.length} target(s)`);
 
-  let summary = buildRunSummaryFromSegmentation(segmentation, extractionFields);
+  const reviewer = deps.reviewer ?? ((
+    runId,
+    segResult,
+    allPages,
+    profile,
+    promptSnapshot,
+    opts,
+  ) => reviewSegmentation(
+    runId,
+    segResult,
+    allPages,
+    profile,
+    promptSnapshot,
+    { apiKey: input.config.GEMINI_API_KEY },
+    undefined,
+    undefined,
+    opts,
+  ));
+
+  emit(input.onLog, 'review', 'Running Agent 1.5 segmentation review');
+  const reviewedSegmentation = await runReviewStep(
+    rendered.run_id,
+    segmentation,
+    rendered.preparedPages,
+    rendered.activeProfile,
+    rendered.promptSnapshot.reviewerPrompt,
+    reviewer,
+    { extractionFields },
+  );
+  const wasCorrected = reviewedSegmentation !== segmentation;
+  emit(
+    input.onLog,
+    'review',
+    wasCorrected
+      ? `Agent 1.5 corrected: ${reviewedSegmentation.targets.length} target(s) (Agent 1 had ${segmentation.targets.length})`
+      : `Agent 1.5: pass (${segmentation.targets.length} target(s) confirmed)`,
+  );
+
+  let summary = buildRunSummaryFromSegmentation(reviewedSegmentation, extractionFields);
 
   const localizer = deps.localizer ?? ((
     runId,
@@ -212,7 +254,7 @@ export async function runFullPipeline(
   emit(input.onLog, 'localization', 'Running Agent 2 localization');
   const localized: LocalizationResult[] = [];
   const localizationFailureRows: FinalResultRow[] = [];
-  for (const target of segmentation.targets) {
+  for (const target of reviewedSegmentation.targets) {
     try {
       const result = await localizer(
         rendered.run_id,
@@ -282,7 +324,7 @@ export async function runFullPipeline(
   const finalRowMap = new Map<string, FinalResultRow>(
     [...finalRows, ...localizationFailureRows].map((row) => [row.target_id, row]),
   );
-  const orderedFinalRows = segmentation.targets
+  const orderedFinalRows = reviewedSegmentation.targets
     .map((target) => finalRowMap.get(target.target_id))
     .filter((row): row is FinalResultRow => row !== undefined);
 

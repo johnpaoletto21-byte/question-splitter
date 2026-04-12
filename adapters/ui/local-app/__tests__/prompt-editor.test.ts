@@ -20,11 +20,12 @@
 
 import { renderPromptEditorHtml } from '../prompt-editor';
 import type { PromptConfigState } from '../../../../core/prompt-config-store/types';
-import { DEFAULT_AGENT1_PROMPT, DEFAULT_AGENT2_PROMPT } from '../../../../core/prompt-config-store/default-prompts';
+import { DEFAULT_AGENT1_PROMPT, DEFAULT_REVIEWER_PROMPT, DEFAULT_AGENT2_PROMPT } from '../../../../core/prompt-config-store/default-prompts';
 
 function makeState(overrides: Partial<PromptConfigState> = {}): PromptConfigState {
   return {
     agent1Prompt: '',
+    reviewerPrompt: '',
     agent2Prompt: '',
     ...overrides,
   };
@@ -111,9 +112,11 @@ describe('renderPromptEditorHtml — renders current prompt values', () => {
   it('renders default prompt text in the textareas', () => {
     const html = renderPromptEditorHtml(makeState({
       agent1Prompt: DEFAULT_AGENT1_PROMPT,
+      reviewerPrompt: DEFAULT_REVIEWER_PROMPT,
       agent2Prompt: DEFAULT_AGENT2_PROMPT,
     }));
     expect(html).toContain('You are Agent 1');
+    expect(html).toContain('You are Agent 1.5');
     expect(html).toContain('You are Agent 2');
   });
 
