@@ -15,6 +15,18 @@ function makeTargetId(index: number): string {
   return `q_${String(index + 1).padStart(4, '0')}`;
 }
 
+function getPageSet(target: SegmentationTarget): Set<number> {
+  return new Set(target.regions.map((r) => r.page_number));
+}
+
+function isStrictSubset(a: Set<number>, b: Set<number>): boolean {
+  if (a.size >= b.size) return false;
+  for (const page of a) {
+    if (!b.has(page)) return false;
+  }
+  return true;
+}
+
 export function buildSegmentationPageWindows(
   pages: ReadonlyArray<PreparedPageImage>,
 ): SegmentationPageWindow[] {
@@ -53,16 +65,32 @@ export function mergeWindowedSegmentationResults(
   runId: string,
   results: ReadonlyArray<SegmentationResult>,
 ): SegmentationResult {
-  const targets: SegmentationTarget[] = [];
+  const collected: SegmentationTarget[] = [];
 
   for (const result of results) {
     for (const target of result.targets) {
-      targets.push({
-        ...target,
-        target_id: makeTargetId(targets.length),
-      });
+      collected.push(target);
     }
   }
+
+  // Remove ghost targets: if target A's pages are a strict subset of target B's
+  // pages, A is likely a truncated duplicate produced by a window that couldn't
+  // see the full page span. Keep the wider target, discard the subset.
+  const pageSets = collected.map(getPageSet);
+  const deduped = collected.filter((_, i) => {
+    for (let j = 0; j < collected.length; j++) {
+      if (i !== j && isStrictSubset(pageSets[i], pageSets[j])) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  // Reassign sequential target_ids after dedup.
+  const targets = deduped.map((target, index) => ({
+    ...target,
+    target_id: makeTargetId(index),
+  }));
 
   return { run_id: runId, targets };
 }
