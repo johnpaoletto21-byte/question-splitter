@@ -1,22 +1,11 @@
 /**
  * adapters/localization/gemini-localizer/localizer.ts
  *
- * Main Gemini localization adapter — the public entry point for Agent 2.
+ * Main Gemini localization adapter — the public entry point for Agent 3.
  *
- * Responsibilities:
- *   1. Filter prepared pages to only those relevant to the target.
- *   2. Read and base64-encode the relevant page images (local files).
- *   3. Build the localization prompt text.
- *   4. Call the Gemini generateContent REST endpoint with structured output.
- *   5. Parse the raw JSON response via parser.ts into a normalized
- *      LocalizationResult (no raw Gemini objects escape this boundary).
- *
- * The HttpPostFn is injectable so tests can mock the network call without
- * importing any provider SDK into core (INV-9 / PO-8).
- *
- * This adapter processes ONE target per call. The orchestrator's localization
- * step calls it once per SegmentationTarget in the reading order produced by
- * Agent 1 — Agent 2 never drives target order.
+ * Processes ONE target per call. The localizer keeps repair retries
+ * (up to 2x) because bbox values have semantic constraints that the
+ * schema can't enforce (y_min < y_max, non-zero area).
  */
 
 import { readFileSync } from 'fs';
@@ -26,7 +15,7 @@ import type { SegmentationTarget } from '../../../core/segmentation-contract/typ
 import type { LocalizationResult } from '../../../core/localization-contract/types';
 import { buildLocalizationPrompt } from './prompt';
 import { parseGeminiLocalizationResponse } from './parser';
-import { GEMINI_LOCALIZATION_SCHEMA } from './schema';
+import { buildGeminiLocalizationSchema, GEMINI_LOCALIZATION_SCHEMA } from './schema';
 import type { GeminiLocalizerConfig, HttpPostFn } from './types';
 
 export const DEFAULT_GEMINI_LOCALIZER_MODEL = 'gemini-3.1-flash-lite-preview';
@@ -57,10 +46,6 @@ const defaultHttpPost: HttpPostFn = async (url, body, headers) => {
 // Image encoding
 // ---------------------------------------------------------------------------
 
-/**
- * Reads a prepared page image from disk and returns a base64-encoded string.
- * Kept isolated and testable (same pattern as the segmentation adapter).
- */
 export function encodePageImageAsBase64(imagePath: string): string {
   const buffer = readFileSync(imagePath);
   return buffer.toString('base64');
@@ -70,15 +55,11 @@ export function encodePageImageAsBase64(imagePath: string): string {
 // Request builder
 // ---------------------------------------------------------------------------
 
-/**
- * Builds the Gemini generateContent request body for one localization target.
- *
- * Sends: text prompt + one inlineData image part per relevant page (in region order).
- */
 export function buildGeminiLocalizationRequest(
   promptText: string,
   relevantPages: PreparedPageImage[],
   encodeFn: (path: string) => string = encodePageImageAsBase64,
+  responseSchema: Record<string, unknown> = GEMINI_LOCALIZATION_SCHEMA,
 ): Record<string, unknown> {
   const parts: unknown[] = [{ text: promptText }];
 
@@ -95,7 +76,7 @@ export function buildGeminiLocalizationRequest(
     contents: [{ parts }],
     generationConfig: {
       responseMimeType: 'application/json',
-      responseSchema: GEMINI_LOCALIZATION_SCHEMA,
+      responseSchema,
     },
   };
 }
@@ -122,6 +103,7 @@ ${validationMessage}
 
 Return corrected JSON for the same target and the same page_number sequence.
 Do not return an empty or placeholder bbox. Every bbox_1000 must have y_min < y_max and x_min < x_max.
+IMPORTANT: Include the ENTIRE question content including all diagrams and figures — never cut off images.
 Previous invalid JSON:
 ${JSON.stringify(invalidOutput, null, 2)}
 `;
@@ -131,11 +113,6 @@ ${JSON.stringify(invalidOutput, null, 2)}
 // Response unwrapper
 // ---------------------------------------------------------------------------
 
-/**
- * Extracts the text content from a Gemini generateContent response envelope.
- * The structured JSON output is embedded as a string in:
- *   response.candidates[0].content.parts[0].text
- */
 export function unwrapGeminiLocalizationResponse(raw: unknown): unknown {
   if (
     typeof raw !== 'object' ||
@@ -176,24 +153,26 @@ export function unwrapGeminiLocalizationResponse(raw: unknown): unknown {
 // ---------------------------------------------------------------------------
 
 /**
- * Filters the full prepared-pages list to the context needed for this target.
- * Agent 2 gets the finish page and the immediately previous page when present.
- *
- * If a required page is not found in the prepared list, an error is thrown
- * so the orchestrator can handle the missing-page failure cleanly.
+ * Filters the prepared-pages list to all pages referenced by the target's regions.
+ * Handles targets with any number of regions (not limited to 2).
  */
 export function selectPagesForTarget(
   target: SegmentationTarget,
   allPages: PreparedPageImage[],
 ): PreparedPageImage[] {
-  const finishPage = target.finish_page_number ??
-    Math.max(...target.regions.map((region) => region.page_number));
+  const wantedPages = new Set(target.regions.map((r) => r.page_number));
 
-  const selected = [finishPage - 1, finishPage]
-    .filter((pageNumber) => pageNumber >= 1)
-    .map((pageNumber) => allPages.find((p) => p.page_number === pageNumber))
-    .filter((page): page is PreparedPageImage => page !== undefined);
+  // Also include the page before the first region for context
+  const minPage = Math.min(...target.regions.map((r) => r.page_number));
+  if (minPage > 1) {
+    wantedPages.add(minPage - 1);
+  }
 
+  const selected = allPages
+    .filter((p) => wantedPages.has(p.page_number))
+    .sort((a, b) => a.page_number - b.page_number);
+
+  // Verify all region pages exist
   for (const region of target.regions) {
     const page = selected.find((p) => p.page_number === region.page_number);
     if (!page) {
@@ -213,20 +192,7 @@ export function selectPagesForTarget(
 
 /**
  * Localizes a single segmentation target using the Gemini API.
- *
- * This is the function that implements the `Localizer` type in the orchestrator.
- * It is the only place where Gemini API specifics (endpoint, auth header,
- * request format) are known for Agent 2 — none of that leaks into core.
- *
- * @param runId          The current run_id (added to the normalized result).
- * @param target         The Agent 1 SegmentationTarget to localize.
- * @param allPages       All prepared pages for the run (filtered internally to relevant pages).
- * @param profile        Active crop target profile (target_type, max regions).
- * @param promptSnapshot Session prompt override (empty string = use built-in prompt).
- * @param config         Gemini API key and optional model name.
- * @param httpPost       Injectable HTTP client (defaults to native fetch).
- * @param encodeFn       Injectable image encoder (defaults to readFileSync+base64).
- * @returns              Normalized LocalizationResult for this target.
+ * Keeps repair retries (up to 2x) for bbox validation errors.
  */
 export async function localizeTarget(
   runId: string,
@@ -244,13 +210,14 @@ export async function localizeTarget(
     `?key=${config.apiKey}`;
 
   const relevantPages = selectPagesForTarget(target, allPages);
+  const responseSchema = buildGeminiLocalizationSchema(profile.max_regions_per_target);
   const promptText = buildLocalizationPrompt(target, profile, promptSnapshot);
   let currentPrompt = promptText;
   let initialValidationMessage = '';
   let lastParsedJson: unknown;
 
   for (let attempt = 0; attempt <= MAX_LOCALIZATION_REPAIR_RETRIES; attempt++) {
-    const requestBody = buildGeminiLocalizationRequest(currentPrompt, relevantPages, encodeFn);
+    const requestBody = buildGeminiLocalizationRequest(currentPrompt, relevantPages, encodeFn, responseSchema);
     const rawResponse = await httpPost(url, requestBody, {
       'Content-Type': 'application/json',
     });

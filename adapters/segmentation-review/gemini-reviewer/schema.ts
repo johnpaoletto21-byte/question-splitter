@@ -1,7 +1,7 @@
 /**
  * adapters/segmentation-review/gemini-reviewer/schema.ts
  *
- * Gemini structured output response schema for Agent 1.5 (reviewer).
+ * Gemini structured output response schema for Agent 2 (reviewer).
  */
 
 import type { ExtractionFieldDefinition } from '../../../core/extraction-fields';
@@ -9,10 +9,11 @@ import { buildGeminiSegmentationSchema } from '../../segmentation/gemini-segment
 
 export function buildGeminiReviewSchema(input: {
   extractionFields?: ReadonlyArray<ExtractionFieldDefinition>;
+  maxRegionsPerTarget?: number;
 } = {}): Record<string, unknown> {
   const segSchema = buildGeminiSegmentationSchema({
     extractionFields: input.extractionFields,
-    requireFinishPage: true,
+    maxRegionsPerTarget: input.maxRegionsPerTarget,
   }) as Record<string, Record<string, Record<string, unknown>>>;
 
   const targetsSchema = segSchema['properties']['targets'];

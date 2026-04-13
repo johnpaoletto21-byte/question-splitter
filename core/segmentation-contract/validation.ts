@@ -21,7 +21,6 @@ import type { ExtractionFieldDefinition } from '../extraction-fields';
 
 export interface SegmentationValidationOptions {
   extractionFields?: ReadonlyArray<ExtractionFieldDefinition>;
-  focusPageNumber?: number;
   requireFinishPage?: boolean;
 }
 
@@ -114,11 +113,9 @@ function validateFinishPage(
   options: SegmentationValidationOptions,
 ): number | undefined {
   const rawFinishPage = raw['finish_page_number'];
-  const mustHaveFinishPage = options.requireFinishPage === true ||
-    options.focusPageNumber !== undefined;
 
   if (rawFinishPage === undefined) {
-    if (!mustHaveFinishPage) {
+    if (options.requireFinishPage !== true) {
       return undefined;
     }
     throw {
@@ -139,14 +136,6 @@ function validateFinishPage(
   }
 
   const finishPage = rawFinishPage as number;
-  if (options.focusPageNumber !== undefined && finishPage !== options.focusPageNumber) {
-    throw {
-      code: 'SEGMENTATION_SCHEMA_INVALID',
-      message:
-        `targets[${targetIndex}].finish_page_number must equal focus page ` +
-        `${options.focusPageNumber}, received ${finishPage}`,
-    } as SegmentationValidationError;
-  }
 
   const maxRegionPage = Math.max(...regions.map((region) => region.page_number));
   if (maxRegionPage !== finishPage) {
@@ -156,20 +145,6 @@ function validateFinishPage(
         `targets[${targetIndex}] max region page ${maxRegionPage} must equal ` +
         `finish_page_number ${finishPage}`,
     } as SegmentationValidationError;
-  }
-
-  if (options.focusPageNumber !== undefined) {
-    const allowedPages = new Set([options.focusPageNumber, options.focusPageNumber - 1]);
-    for (const region of regions) {
-      if (!allowedPages.has(region.page_number)) {
-        throw {
-          code: 'SEGMENTATION_SCHEMA_INVALID',
-          message:
-            `targets[${targetIndex}].regions contains page ${region.page_number}; ` +
-            `focus page ${options.focusPageNumber} only allows current or previous page`,
-        } as SegmentationValidationError;
-      }
-    }
   }
 
   return finishPage;
@@ -319,6 +294,20 @@ export function validateSegmentationTarget(
 
   if (typeof rawComment === 'string') {
     target.review_comment = rawComment;
+  }
+
+  // New optional fields: question_number, question_text, sub_questions
+  if (isString(raw['question_number'])) {
+    target.question_number = raw['question_number'] as string;
+  }
+  if (isString(raw['question_text'])) {
+    target.question_text = raw['question_text'] as string;
+  }
+  if (isArray(raw['sub_questions'])) {
+    const subs = raw['sub_questions'] as unknown[];
+    if (subs.every(isString)) {
+      target.sub_questions = subs as string[];
+    }
   }
 
   return target;

@@ -1,7 +1,8 @@
 /**
  * adapters/segmentation-review/gemini-reviewer/prompt.ts
  *
- * Constructs the review prompt for Agent 1.5.
+ * Constructs the review prompt for Agent 2 (reviewer).
+ * Now operates per-chunk (receives chunk's pages and chunk's segmentation output).
  */
 
 import type { CropTargetProfile } from '../../../core/crop-target-profile/types';

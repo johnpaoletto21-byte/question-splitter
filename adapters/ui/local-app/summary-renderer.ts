@@ -282,40 +282,36 @@ function renderDebugPanel(debug: DebugData): string {
       <h2>Pipeline Internals</h2>
     </div>
     ${renderAgent1Section(debug)}
-    ${renderFilteringSection(debug)}
     ${renderReviewSection(debug)}
     ${renderAgent2Section(debug)}
-    ${renderValidationSection(debug)}
+    ${renderDeduplicationSection(debug)}
   </div>`;
 }
 
 function renderAgent1Section(debug: DebugData): string {
-  const windowRows = debug.agent1WindowResults.map((w) => {
-    const targetRows = w.targets.length === 0
-      ? '<tr><td colspan="6" class="debug-note">No targets found in this window</td></tr>'
-      : w.targets.map((t) => {
+  const chunkRows = debug.agent1ChunkResults.map((c) => {
+    const targetRows = c.targets.length === 0
+      ? '<tr><td colspan="7" class="debug-note">No targets found in this chunk</td></tr>'
+      : c.targets.map((t) => {
           const pages = t.regions.map((r) => r.page_number).join(', ');
-          const ef = t.extraction_fields
-            ? Object.entries(t.extraction_fields).map(([k, v]) => `${esc(k)}=${v}`).join(', ')
-            : '—';
           return `<tr>
             <td>${esc(t.target_id)}</td>
-            <td>${esc(t.target_type)}</td>
+            <td>${esc(t.question_number ?? '—')}</td>
+            <td>${esc((t.question_text ?? '').slice(0, 80))}${(t.question_text?.length ?? 0) > 80 ? '...' : ''}</td>
             <td>${pages}</td>
             <td>${t.finish_page_number ?? '—'}</td>
-            <td>${esc(ef)}</td>
+            <td>${(t.sub_questions ?? []).join(', ') || '—'}</td>
             <td>${t.review_comment ? esc(t.review_comment) : '—'}</td>
           </tr>`;
         }).join('');
 
     return `
     <div class="sub-section">
-      <h4>Window: Focus Page ${w.focusPageNumber}</h4>
-      <p><span class="debug-label">Context pages:</span> ${w.contextPageNumbers.join(', ')}</p>
-      <p><span class="debug-label">Allowed region pages:</span> ${w.allowedRegionPageNumbers.join(', ')}</p>
+      <h4>Chunk ${c.chunkIndex}: Pages ${c.startPage}–${c.endPage}</h4>
+      <p><span class="debug-label">Context pages:</span> ${c.contextPageNumbers.join(', ')}</p>
       <table>
         <thead><tr>
-          <th>Target ID</th><th>Type</th><th>Region Pages</th><th>Finish Page</th><th>Extraction Fields</th><th>Review Comment</th>
+          <th>Target ID</th><th>Q#</th><th>Question Text</th><th>Region Pages</th><th>Finish Page</th><th>Sub-Qs</th><th>Review Comment</th>
         </tr></thead>
         <tbody>${targetRows}</tbody>
       </table>
@@ -324,102 +320,41 @@ function renderAgent1Section(debug: DebugData): string {
 
   return `
   <details>
-    <summary>1. Agent 1 — Segmentation Outputs (${debug.agent1WindowResults.length} windows)</summary>
-    <div class="debug-content">${windowRows}</div>
-  </details>`;
-}
-
-function renderFilteringSection(debug: DebugData): string {
-  const totalCollected = debug.agent1WindowResults.reduce((sum, w) => sum + w.targets.length, 0);
-  const mergedCount = debug.agent1MergedSegmentation.targets.length;
-  const ghostCount = debug.ghostTargetsRemoved.length;
-
-  const ghostRows = ghostCount === 0
-    ? '<p class="debug-note">No ghost targets removed — all targets were unique.</p>'
-    : `<table>
-        <thead><tr>
-          <th>Removed Target</th><th>Pages</th><th>Subsumed By</th><th>Pages</th>
-        </tr></thead>
-        <tbody>${debug.ghostTargetsRemoved.map((g) => `<tr class="failure-row">
-          <td class="debug-removed">${esc(g.target.target_id)}</td>
-          <td>${g.target.regions.map((r) => r.page_number).join(', ')}</td>
-          <td>${esc(g.keptBy.target_id)}</td>
-          <td>${g.keptBy.regions.map((r) => r.page_number).join(', ')}</td>
-        </tr>`).join('')}</tbody>
-      </table>`;
-
-  return `
-  <details>
-    <summary>2. Filtering — Merge &amp; Ghost Dedup</summary>
-    <div class="debug-content">
-      <p><span class="debug-label">Total targets collected from all windows:</span> ${totalCollected}</p>
-      <p><span class="debug-label">After merge (ghost dedup):</span> ${mergedCount}</p>
-      <p><span class="debug-label">Ghost targets removed:</span> ${ghostCount}</p>
-      ${ghostRows}
-    </div>
+    <summary>1. Agent 1 — Segmentation Outputs (${debug.agent1ChunkResults.length} chunks)</summary>
+    <div class="debug-content">${chunkRows}</div>
   </details>`;
 }
 
 function renderReviewSection(debug: DebugData): string {
-  const inputTargets = debug.agent1MergedSegmentation.targets;
-  const outputTargets = debug.reviewStepOutput.targets;
+  const reviewRows = debug.reviewChunkResults.map((r) => {
+    const badge = r.corrected
+      ? '<span class="debug-corrected">CORRECTED</span>'
+      : '<span class="debug-pass">PASS</span>';
 
-  let diffContent: string;
-  if (!debug.reviewStepCorrected) {
-    diffContent = `<p class="debug-pass">Pass-through: Agent 1.5 confirmed Agent 1's output — no corrections made.</p>
-    <p><span class="debug-label">Targets confirmed:</span> ${inputTargets.length}</p>`;
-  } else {
-    const inputIds = new Set(inputTargets.map((t) => t.target_id));
-    const outputIds = new Set(outputTargets.map((t) => t.target_id));
+    const targetRows = r.targets.map((t) => {
+      const pages = t.regions.map((reg) => reg.page_number).join(', ');
+      return `<tr>
+        <td>${esc(t.target_id)}</td>
+        <td>${esc(t.question_number ?? '—')}</td>
+        <td>${pages}</td>
+        <td>${t.review_comment ? esc(t.review_comment) : '—'}</td>
+      </tr>`;
+    }).join('');
 
-    const inputRow = (t: { target_id: string; regions: { page_number: number }[] }) =>
-      `${esc(t.target_id)} [pages: ${t.regions.map((r) => r.page_number).join(', ')}]`;
-
-    diffContent = `<p class="debug-corrected">Agent 1.5 made corrections.</p>
+    return `
     <div class="sub-section">
-      <h4>Agent 1.5 Input (merged Agent 1 segmentation — ${inputTargets.length} targets)</h4>
+      <h4>Chunk ${r.chunkIndex}: ${badge} (${r.targets.length} targets)</h4>
       <table>
-        <thead><tr><th>Target ID</th><th>Type</th><th>Region Pages</th><th>Finish Page</th><th>Extraction Fields</th><th>Review Comment</th></tr></thead>
-        <tbody>${inputTargets.map((t) => {
-          const ef = t.extraction_fields
-            ? Object.entries(t.extraction_fields).map(([k, v]) => `${esc(k)}=${v}`).join(', ')
-            : '—';
-          return `<tr>
-            <td>${esc(t.target_id)}</td>
-            <td>${esc(t.target_type)}</td>
-            <td>${t.regions.map((r) => r.page_number).join(', ')}</td>
-            <td>${t.finish_page_number ?? '—'}</td>
-            <td>${esc(ef)}</td>
-            <td>${t.review_comment ? esc(t.review_comment) : '—'}</td>
-          </tr>`;
-        }).join('')}</tbody>
-      </table>
-    </div>
-    <div class="sub-section">
-      <h4>Agent 1.5 Output (corrected — ${outputTargets.length} targets)</h4>
-      <table>
-        <thead><tr><th>Target ID</th><th>Type</th><th>Region Pages</th><th>Finish Page</th><th>Extraction Fields</th><th>Review Comment</th></tr></thead>
-        <tbody>${outputTargets.map((t) => {
-          const ef = t.extraction_fields
-            ? Object.entries(t.extraction_fields).map(([k, v]) => `${esc(k)}=${v}`).join(', ')
-            : '—';
-          return `<tr>
-            <td>${esc(t.target_id)}</td>
-            <td>${esc(t.target_type)}</td>
-            <td>${t.regions.map((r) => r.page_number).join(', ')}</td>
-            <td>${t.finish_page_number ?? '—'}</td>
-            <td>${esc(ef)}</td>
-            <td>${t.review_comment ? esc(t.review_comment) : '—'}</td>
-          </tr>`;
-        }).join('')}</tbody>
+        <thead><tr><th>Target ID</th><th>Q#</th><th>Region Pages</th><th>Review Comment</th></tr></thead>
+        <tbody>${targetRows}</tbody>
       </table>
     </div>`;
-  }
+  }).join('');
 
   return `
   <details>
-    <summary>3. Agent 1.5 — Segmentation Review (${debug.reviewStepCorrected ? 'CORRECTED' : 'PASS'})</summary>
-    <div class="debug-content">${diffContent}</div>
+    <summary>2. Agent 2 — Segmentation Review (${debug.reviewChunkResults.length} chunks)</summary>
+    <div class="debug-content">${reviewRows}</div>
   </details>`;
 }
 
@@ -463,53 +398,38 @@ function renderAgent2Section(debug: DebugData): string {
   </details>`;
 }
 
-function renderValidationSection(debug: DebugData): string {
-  const totalAgent1Targets = debug.agent1WindowResults.reduce((sum, w) => sum + w.targets.length, 0);
-  const mergedTargets = debug.agent1MergedSegmentation.targets.length;
-  const reviewedTargets = debug.reviewStepOutput.targets.length;
-  const localizedOk = debug.localizationResults.length;
-  const localizedFail = debug.localizationFailures.length;
+function renderDeduplicationSection(debug: DebugData): string {
+  if (!debug.deduplicationResult) {
+    return `
+    <details>
+      <summary>5. Agent 4 — Deduplication (skipped — single chunk)</summary>
+      <div class="debug-content">
+        <p class="debug-note">No deduplication needed — document was processed in a single chunk.</p>
+      </div>
+    </details>`;
+  }
+
+  const logRows = (debug.deduplicationMergeLog ?? []).map((entry) => `<tr>
+    <td>${esc(entry.action)}</td>
+    <td>${esc(entry.result_target_id)}</td>
+    <td>${entry.source_target_ids.map((id) => esc(id)).join(', ')}</td>
+    <td>${entry.source_chunks.join(', ')}</td>
+    <td>${esc(entry.reason)}</td>
+  </tr>`).join('');
 
   return `
   <details>
-    <summary>5. Validation Summary</summary>
+    <summary>5. Agent 4 — Deduplication (${debug.deduplicationResult.targets.length} final targets)</summary>
     <div class="debug-content">
-      <table>
-        <thead><tr><th>Validation Step</th><th>Scope</th><th>Result</th></tr></thead>
-        <tbody>
-          <tr>
-            <td>Segmentation schema (Agent 1)</td>
-            <td>${totalAgent1Targets} target(s) across ${debug.agent1WindowResults.length} window(s)</td>
-            <td class="debug-pass">Passed (all targets parsed successfully)</td>
-          </tr>
-          <tr>
-            <td>Ghost dedup filter</td>
-            <td>${totalAgent1Targets} collected → ${mergedTargets} kept</td>
-            <td>${debug.ghostTargetsRemoved.length > 0
-              ? `<span class="debug-removed">${debug.ghostTargetsRemoved.length} ghost(s) removed</span>`
-              : '<span class="debug-pass">No duplicates</span>'}</td>
-          </tr>
-          <tr>
-            <td>Review validation (Agent 1.5)</td>
-            <td>${mergedTargets} input → ${reviewedTargets} output target(s)</td>
-            <td>${debug.reviewStepCorrected
-              ? '<span class="debug-corrected">Corrections applied</span>'
-              : '<span class="debug-pass">Pass-through</span>'}</td>
-          </tr>
-          <tr>
-            <td>Localization schema (Agent 2)</td>
-            <td>${reviewedTargets} target(s) attempted</td>
-            <td>${localizedFail === 0
-              ? `<span class="debug-pass">All ${localizedOk} passed</span>`
-              : `<span class="debug-pass">${localizedOk} passed</span>, <span class="debug-removed">${localizedFail} failed</span>`}</td>
-          </tr>
-          <tr>
-            <td>BBox bounds check</td>
-            <td>${localizedOk} localized target(s)</td>
-            <td class="debug-pass">Validated (within [0, 1000], correct ordering)</td>
-          </tr>
-        </tbody>
-      </table>
+      <p><span class="debug-label">Input targets (pre-dedup):</span> ${debug.localizationResults.length}</p>
+      <p><span class="debug-label">Output targets (post-dedup):</span> ${debug.deduplicationResult.targets.length}</p>
+      <div class="sub-section">
+        <h4>Merge Log (${debug.deduplicationMergeLog?.length ?? 0} actions)</h4>
+        <table>
+          <thead><tr><th>Action</th><th>Result ID</th><th>Source IDs</th><th>Source Chunks</th><th>Reason</th></tr></thead>
+          <tbody>${logRows || '<tr><td colspan="5" class="debug-note">No merge actions taken</td></tr>'}</tbody>
+        </table>
+      </div>
     </div>
   </details>`;
 }

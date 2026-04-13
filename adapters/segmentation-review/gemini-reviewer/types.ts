@@ -17,6 +17,9 @@ export interface GeminiRawReviewOutput {
     regions: Array<{ page_number: number }>;
     extraction_fields?: Record<string, unknown>;
     review_comment?: string;
+    question_number?: string;
+    question_text?: string;
+    sub_questions?: string[];
   }>;
 }
 

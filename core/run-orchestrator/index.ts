@@ -3,6 +3,7 @@ export { renderAllSources } from './render-step';
 export { runSegmentationStep } from './segmentation-step';
 export { runReviewStep } from './review-step';
 export { runLocalizationStep } from './localization-step';
+export { runDeduplicationStep } from './deduplication-step';
 export { runCropStep } from './crop-step';
 export { runCompositionStep } from './composition-step';
 export { runUploadStep } from './upload-step';
@@ -12,6 +13,7 @@ export type { PageRenderer } from './render-step';
 export type { Segmenter } from './segmentation-step';
 export type { SegmentationReviewer } from './review-step';
 export type { Localizer } from './localization-step';
+export type { Deduplicator } from './deduplication-step';
 export type { CropExecutor, CropStepTargetResult } from './crop-step';
 export type { ImageStackerFn } from './composition-step';
 export type { DriveUploaderFn } from './upload-step';
@@ -23,6 +25,7 @@ export {
   setAgent1Prompt,
   setReviewerPrompt,
   setAgent2Prompt,
+  setDeduplicatorPrompt,
   capturePromptSnapshot,
   resetPromptConfig,
 } from '../prompt-config-store/store';

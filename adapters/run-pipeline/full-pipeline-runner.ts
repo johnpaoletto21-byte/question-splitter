@@ -2,6 +2,9 @@
  * adapters/run-pipeline/full-pipeline-runner.ts
  *
  * Adapter-layer glue for the full local PDF-to-Drive pipeline.
+ *
+ * New flow:
+ *   Render → [per chunk: Segment → Review → Localize] → Dedup → Crop → Compose → Upload
  */
 
 import * as fs from 'fs';
@@ -10,6 +13,7 @@ import { renderPdfSource } from '../source-preparation/pdf-renderer';
 import { segmentPages } from '../segmentation/gemini-segmenter';
 import { reviewSegmentation } from '../segmentation-review/gemini-reviewer';
 import { localizeTarget } from '../localization/gemini-localizer';
+import { deduplicateTargets } from '../deduplication/gemini-deduplicator';
 import { uploadToDrive } from '../upload/google-drive';
 import { makeCanvasCropExecutor, makeCanvasImageStacker } from '../image-processing';
 import {
@@ -17,6 +21,7 @@ import {
   renderAllSources,
   runSegmentationStep,
   runReviewStep,
+  runDeduplicationStep,
   runCropStep,
   runCompositionStep,
   runUploadStep,
@@ -26,12 +31,20 @@ import type {
   Segmenter,
   SegmentationReviewer,
   Localizer,
+  Deduplicator,
   CropExecutor,
   ImageStackerFn,
   DriveUploaderFn,
 } from '../../core/run-orchestrator';
 import type { LocalizationResult } from '../../core/localization-contract/types';
 import type { SegmentationResult } from '../../core/segmentation-contract/types';
+import type {
+  DeduplicationInput,
+  DeduplicationChunkInput,
+  DeduplicationTargetInput,
+  DeduplicationResult,
+  DeduplicatedTarget,
+} from '../../core/deduplication-contract/types';
 import {
   buildRunSummaryFromSegmentation,
   applyLocalizationToSummary,
@@ -42,13 +55,12 @@ import type { FinalResultRow } from '../../core/result-model/types';
 import type { PromptSnapshot } from '../../core/prompt-config-store/types';
 import type { ExtractionFieldDefinition } from '../../core/extraction-fields';
 import {
-  buildSegmentationPageWindows,
-  getAllowedSegmentationRegionPageNumbers,
-  mergeWindowedSegmentationResults,
+  buildChunkedPageWindows,
+  getOverlapZones,
   selectLocalizationContextPages,
-  identifyGhostTargets,
 } from './page-windows';
-import type { DebugData } from '../../core/run-summary/debug-types';
+import type { ChunkWindow } from './page-windows';
+import type { DebugData, SegmentationChunkDebug, ReviewChunkDebug } from '../../core/run-summary/debug-types';
 
 export interface PipelineLogEvent {
   stage: string;
@@ -63,6 +75,10 @@ export interface RunFullPipelineInput {
   extractionFields?: ExtractionFieldDefinition[];
   promptSnapshot?: PromptSnapshot;
   onLog?: (event: PipelineLogEvent) => void;
+  /** Pages per chunk (default 10). */
+  chunkSize?: number;
+  /** Overlap pages between consecutive chunks (default 3). */
+  chunkOverlap?: number;
 }
 
 export interface RunFullPipelineDependencies {
@@ -70,6 +86,7 @@ export interface RunFullPipelineDependencies {
   segmenter?: Segmenter;
   reviewer?: SegmentationReviewer;
   localizer?: Localizer;
+  deduplicator?: Deduplicator;
   cropExecutor?: CropExecutor;
   imageStacker?: ImageStackerFn;
   driveUploader?: DriveUploaderFn;
@@ -131,6 +148,10 @@ export async function runFullPipeline(
   emit(input.onLog, 'render', `Rendered ${rendered.preparedPages.length} page image(s)`);
 
   const extractionFields = input.extractionFields ?? [];
+  const chunkSize = input.chunkSize ?? 10;
+  const chunkOverlap = input.chunkOverlap ?? 3;
+
+  // Build segmenter function
   const segmenter = deps.segmenter ?? ((
     runId,
     pages,
@@ -148,56 +169,7 @@ export async function runFullPipeline(
     options,
   ));
 
-  emit(input.onLog, 'segmentation', 'Running Agent 1 segmentation in page windows');
-  const segmentationWindows = buildSegmentationPageWindows(rendered.preparedPages);
-  const windowResults: SegmentationResult[] = [];
-  for (const window of segmentationWindows) {
-    const allowedRegionPageNumbers = getAllowedSegmentationRegionPageNumbers(
-      window.focusPageNumber,
-    );
-    emit(
-      input.onLog,
-      'segmentation',
-      `Agent 1 focus page ${window.focusPageNumber} with pages ` +
-        `${window.pages.map((page) => page.page_number).join(', ')}; ` +
-        `allowed output region pages ${allowedRegionPageNumbers.join(', ')}`,
-    );
-    try {
-      windowResults.push(await runSegmentationStep(
-        rendered.run_id,
-        window.pages,
-        rendered.activeProfile,
-        rendered.promptSnapshot.agent1Prompt,
-        segmenter,
-        {
-          focusPageNumber: window.focusPageNumber,
-          allowedRegionPageNumbers,
-          extractionFields,
-        },
-      ));
-    } catch (err) {
-      const message = formatUnknownError(err);
-      const segmentationWindow = {
-        focusPageNumber: window.focusPageNumber,
-        pageNumbers: window.pages.map((page) => page.page_number),
-        allowedRegionPageNumbers,
-      };
-      emit(
-        input.onLog,
-        'segmentation',
-        `Agent 1 failed for focus page ${window.focusPageNumber}; ` +
-          `allowed output region pages ${allowedRegionPageNumbers.join(', ')}; ${message}`,
-      );
-      throw {
-        code: errorCode(err, 'SEGMENTATION_FAILED'),
-        message,
-        segmentationWindow,
-      };
-    }
-  }
-  const segmentation = mergeWindowedSegmentationResults(rendered.run_id, windowResults);
-  emit(input.onLog, 'segmentation', `Agent 1 found ${segmentation.targets.length} target(s)`);
-
+  // Build reviewer function
   const reviewer = deps.reviewer ?? ((
     runId,
     segResult,
@@ -217,27 +189,7 @@ export async function runFullPipeline(
     opts,
   ));
 
-  emit(input.onLog, 'review', 'Running Agent 1.5 segmentation review');
-  const reviewedSegmentation = await runReviewStep(
-    rendered.run_id,
-    segmentation,
-    rendered.preparedPages,
-    rendered.activeProfile,
-    rendered.promptSnapshot.reviewerPrompt,
-    reviewer,
-    { extractionFields },
-  );
-  const wasCorrected = reviewedSegmentation !== segmentation;
-  emit(
-    input.onLog,
-    'review',
-    wasCorrected
-      ? `Agent 1.5 corrected: ${reviewedSegmentation.targets.length} target(s) (Agent 1 had ${segmentation.targets.length})`
-      : `Agent 1.5: pass (${segmentation.targets.length} target(s) confirmed)`,
-  );
-
-  let summary = buildRunSummaryFromSegmentation(reviewedSegmentation, extractionFields);
-
+  // Build localizer function
   const localizer = deps.localizer ?? ((
     runId,
     target,
@@ -253,47 +205,257 @@ export async function runFullPipeline(
     { apiKey: input.config.GEMINI_API_KEY },
   ));
 
-  emit(input.onLog, 'localization', 'Running Agent 2 localization');
-  const localized: LocalizationResult[] = [];
+  // ---------------------------------------------------------------------------
+  // Phase 1: Per-chunk processing (Segment → Review → Localize)
+  // ---------------------------------------------------------------------------
+
+  emit(input.onLog, 'segmentation', `Building ${chunkSize}-page chunks with ${chunkOverlap}-page overlap`);
+  const chunks = buildChunkedPageWindows(rendered.preparedPages, chunkSize, chunkOverlap);
+  emit(input.onLog, 'segmentation', `Created ${chunks.length} chunk(s)`);
+
+  const agent1ChunkResults: SegmentationChunkDebug[] = [];
+  const reviewChunkResults: ReviewChunkDebug[] = [];
+  const allLocalized: LocalizationResult[] = [];
   const localizationFailureRows: FinalResultRow[] = [];
-  for (const target of reviewedSegmentation.targets) {
+  const dedupChunkInputs: DeduplicationChunkInput[] = [];
+
+  for (const chunk of chunks) {
+    emit(
+      input.onLog,
+      'segmentation',
+      `Chunk ${chunk.chunkIndex}: pages ${chunk.startPage}-${chunk.endPage}`,
+    );
+
+    // Agent 1: Segment this chunk
+    let segmentation: SegmentationResult;
     try {
-      const result = await localizer(
+      segmentation = await runSegmentationStep(
         rendered.run_id,
-        target,
-        selectLocalizationContextPages(target, rendered.preparedPages),
+        chunk.pages,
         rendered.activeProfile,
-        rendered.promptSnapshot.agent2Prompt,
+        rendered.promptSnapshot.agent1Prompt,
+        segmenter,
+        {
+          extractionFields,
+          chunkStartPage: chunk.startPage,
+          chunkEndPage: chunk.endPage,
+        },
       );
-      localized.push(result);
-      emit(input.onLog, 'localization', `Localized ${target.target_id}`);
     } catch (err) {
       const message = formatUnknownError(err);
-      emit(input.onLog, 'localization', `Localization failed for ${target.target_id}: ${message}`);
-      localizationFailureRows.push({
-        target_id: target.target_id,
-        source_pages: target.regions.map((r) => r.page_number),
-        output_file_name: '',
-        status: 'failed',
-        failure_code: errorCode(err, 'LOCALIZATION_FAILED'),
-        failure_message: message,
-      });
+      emit(input.onLog, 'segmentation', `Agent 1 failed for chunk ${chunk.chunkIndex}: ${message}`);
+      throw {
+        code: errorCode(err, 'SEGMENTATION_FAILED'),
+        message,
+        chunk: { chunkIndex: chunk.chunkIndex, startPage: chunk.startPage, endPage: chunk.endPage },
+      };
     }
+    emit(
+      input.onLog,
+      'segmentation',
+      `Chunk ${chunk.chunkIndex}: Agent 1 found ${segmentation.targets.length} target(s)`,
+    );
+
+    agent1ChunkResults.push({
+      chunkIndex: chunk.chunkIndex,
+      startPage: chunk.startPage,
+      endPage: chunk.endPage,
+      contextPageNumbers: chunk.pages.map((p) => p.page_number),
+      targets: segmentation.targets,
+    });
+
+    // Agent 2: Review this chunk's segmentation
+    emit(input.onLog, 'review', `Chunk ${chunk.chunkIndex}: running review`);
+    let reviewedSegmentation: SegmentationResult;
+    try {
+      reviewedSegmentation = await runReviewStep(
+        rendered.run_id,
+        segmentation,
+        chunk.pages,
+        rendered.activeProfile,
+        rendered.promptSnapshot.reviewerPrompt,
+        reviewer,
+        { extractionFields },
+      );
+    } catch (err) {
+      const message = formatUnknownError(err);
+      emit(input.onLog, 'review', `Agent 2 review failed for chunk ${chunk.chunkIndex}: ${message}`);
+      // Use segmentation result as fallback if review fails
+      reviewedSegmentation = segmentation;
+    }
+    const wasCorrected = reviewedSegmentation !== segmentation;
+    emit(
+      input.onLog,
+      'review',
+      `Chunk ${chunk.chunkIndex}: ${wasCorrected ? 'corrected' : 'pass'} (${reviewedSegmentation.targets.length} target(s))`,
+    );
+
+    reviewChunkResults.push({
+      chunkIndex: chunk.chunkIndex,
+      corrected: wasCorrected,
+      targets: reviewedSegmentation.targets,
+    });
+
+    // Agent 3: Localize each target in this chunk
+    const chunkLocalized: LocalizationResult[] = [];
+    for (const target of reviewedSegmentation.targets) {
+      try {
+        const contextPages = selectLocalizationContextPages(target, chunk.pages);
+        const result = await localizer(
+          rendered.run_id,
+          target,
+          contextPages,
+          rendered.activeProfile,
+          rendered.promptSnapshot.agent2Prompt,
+        );
+        chunkLocalized.push(result);
+        allLocalized.push(result);
+        emit(input.onLog, 'localization', `Chunk ${chunk.chunkIndex}: localized ${target.target_id}`);
+      } catch (err) {
+        const message = formatUnknownError(err);
+        emit(
+          input.onLog,
+          'localization',
+          `Chunk ${chunk.chunkIndex}: localization failed for ${target.target_id}: ${message}`,
+        );
+        localizationFailureRows.push({
+          target_id: target.target_id,
+          source_pages: target.regions.map((r) => r.page_number),
+          output_file_name: '',
+          status: 'failed',
+          failure_code: errorCode(err, 'LOCALIZATION_FAILED'),
+          failure_message: message,
+        });
+      }
+    }
+
+    // Build dedup input for this chunk
+    const chunkTargets: DeduplicationTargetInput[] = chunkLocalized.map((loc) => {
+      const segTarget = reviewedSegmentation.targets.find((t) => t.target_id === loc.target_id);
+      return {
+        target_id: `chunk${chunk.chunkIndex}_${loc.target_id}`,
+        target_type: segTarget?.target_type ?? 'question',
+        question_number: segTarget?.question_number,
+        question_text: segTarget?.question_text,
+        sub_questions: segTarget?.sub_questions,
+        finish_page_number: segTarget?.finish_page_number,
+        regions: loc.regions,
+        extraction_fields: segTarget?.extraction_fields,
+        review_comment: segTarget?.review_comment,
+      };
+    });
+
+    dedupChunkInputs.push({
+      chunk_index: chunk.chunkIndex,
+      start_page: chunk.startPage,
+      end_page: chunk.endPage,
+      targets: chunkTargets,
+    });
   }
-  for (const result of localized) {
-    summary = applyLocalizationToSummary(summary, result);
-  }
+
   emit(
     input.onLog,
     'localization',
-    `Localized ${localized.length} target(s); ${localizationFailureRows.length} failed`,
+    `All chunks: ${allLocalized.length} localized, ${localizationFailureRows.length} failed`,
   );
+
+  // ---------------------------------------------------------------------------
+  // Phase 2: Deduplication (if multiple chunks)
+  // ---------------------------------------------------------------------------
+
+  let dedupResult: DeduplicationResult | undefined;
+  let finalLocalized: LocalizationResult[];
+
+  if (chunks.length <= 1) {
+    // Single chunk — no dedup needed, use localized results directly
+    finalLocalized = allLocalized;
+    emit(input.onLog, 'deduplication', 'Single chunk — skipping deduplication');
+  } else {
+    emit(input.onLog, 'deduplication', 'Running Agent 4 deduplication across all chunks');
+
+    const overlapZones = getOverlapZones(chunks);
+    const dedupInput: DeduplicationInput = {
+      run_id: rendered.run_id,
+      chunks: dedupChunkInputs,
+      overlap_zones: overlapZones,
+    };
+
+    const deduplicator = deps.deduplicator ?? ((
+      dedupIn: DeduplicationInput,
+      promptSnapshot: string,
+    ) => deduplicateTargets(
+      dedupIn,
+      promptSnapshot,
+      { apiKey: input.config.GEMINI_API_KEY },
+    ));
+
+    try {
+      dedupResult = await runDeduplicationStep(
+        dedupInput,
+        rendered.promptSnapshot.deduplicatorPrompt,
+        deduplicator,
+      );
+    } catch (err) {
+      const message = formatUnknownError(err);
+      emit(input.onLog, 'deduplication', `Agent 4 failed: ${message}`);
+      throw {
+        code: errorCode(err, 'DEDUPLICATION_FAILED'),
+        message,
+      };
+    }
+
+    emit(
+      input.onLog,
+      'deduplication',
+      `Dedup: ${dedupResult.targets.length} target(s) from ${allLocalized.length} pre-dedup`,
+    );
+
+    // Convert deduplicated targets into LocalizationResult format for crop/compose
+    finalLocalized = dedupResult.targets.map((dt) => ({
+      run_id: rendered.run_id,
+      target_id: dt.target_id,
+      regions: dt.regions,
+    }));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Phase 3: Build summary from final target list
+  // ---------------------------------------------------------------------------
+
+  // Build a synthetic SegmentationResult from the final targets for summary
+  const finalSegmentation: SegmentationResult = {
+    run_id: rendered.run_id,
+    targets: finalLocalized.map((loc) => {
+      // Try to find the dedup target for metadata
+      const dedupTarget = dedupResult?.targets.find((t) => t.target_id === loc.target_id);
+      return {
+        target_id: loc.target_id,
+        target_type: dedupTarget?.target_type ?? 'question',
+        finish_page_number: dedupTarget?.finish_page_number ?? Math.max(...loc.regions.map((r) => r.page_number)),
+        regions: loc.regions.map((r) => ({ page_number: r.page_number })),
+        question_number: dedupTarget?.question_number,
+        question_text: dedupTarget?.question_text,
+        sub_questions: dedupTarget?.sub_questions,
+        extraction_fields: dedupTarget?.extraction_fields,
+      };
+    }),
+  };
+
+  let summary = buildRunSummaryFromSegmentation(finalSegmentation, extractionFields);
+
+  for (const result of finalLocalized) {
+    summary = applyLocalizationToSummary(summary, result);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Phase 4: Crop → Compose → Upload (unchanged)
+  // ---------------------------------------------------------------------------
 
   const cropExecutor = deps.cropExecutor ?? makeCanvasCropExecutor(input.config.OUTPUT_DIR);
   emit(input.onLog, 'crop', 'Cropping target regions');
   const cropResults = await runCropStep(
     rendered.run_id,
-    localized,
+    finalLocalized,
     rendered.preparedPages,
     cropExecutor,
   );
@@ -307,7 +469,7 @@ export async function runFullPipeline(
   const composedRows = await runCompositionStep(
     rendered.run_id,
     cropResults,
-    localized,
+    finalLocalized,
     rendered.activeProfile,
     imageStacker,
   );
@@ -326,32 +488,24 @@ export async function runFullPipeline(
   const finalRowMap = new Map<string, FinalResultRow>(
     [...finalRows, ...localizationFailureRows].map((row) => [row.target_id, row]),
   );
-  const orderedFinalRows = reviewedSegmentation.targets
+  const orderedFinalRows = finalSegmentation.targets
     .map((target) => finalRowMap.get(target.target_id))
     .filter((row): row is FinalResultRow => row !== undefined);
 
   summary = applyFinalResultsToSummary(summary, orderedFinalRows);
 
   const debugData: DebugData = {
-    agent1WindowResults: windowResults.map((wr, i) => ({
-      focusPageNumber: segmentationWindows[i].focusPageNumber,
-      contextPageNumbers: segmentationWindows[i].pages.map((p) => p.page_number),
-      allowedRegionPageNumbers: getAllowedSegmentationRegionPageNumbers(
-        segmentationWindows[i].focusPageNumber,
-      ),
-      targets: wr.targets,
-    })),
-    agent1MergedSegmentation: segmentation,
-    ghostTargetsRemoved: identifyGhostTargets(windowResults),
-    reviewStepOutput: reviewedSegmentation,
-    reviewStepCorrected: wasCorrected,
-    localizationResults: localized,
+    agent1ChunkResults,
+    reviewChunkResults,
+    localizationResults: allLocalized,
     localizationFailures: localizationFailureRows.map((row) => ({
       targetId: row.target_id,
       sourcePages: row.source_pages,
       failureCode: row.status === 'failed' ? row.failure_code : 'UNKNOWN',
       failureMessage: row.status === 'failed' ? row.failure_message : '',
     })),
+    deduplicationResult: dedupResult,
+    deduplicationMergeLog: dedupResult?.merge_log,
   };
   summary = { ...summary, debugData };
 

@@ -24,7 +24,7 @@ function makeTargetId(index: number): string {
 export function parseGeminiReviewResponse(
   raw: unknown,
   runId: string,
-  maxRegionsPerTarget: number = 2,
+  maxRegionsPerTarget: number = 10,
   options: ParseGeminiReviewOptions = {},
 ): SegmentationResult | null {
   if (!isObject(raw)) {
@@ -83,6 +83,17 @@ export function parseGeminiReviewResponse(
       target['review_comment'] = t['review_comment'];
     }
 
+    // New fields
+    if (typeof t['question_number'] === 'string') {
+      target['question_number'] = t['question_number'];
+    }
+    if (typeof t['question_text'] === 'string') {
+      target['question_text'] = t['question_text'];
+    }
+    if (Array.isArray(t['sub_questions'])) {
+      target['sub_questions'] = t['sub_questions'];
+    }
+
     return target;
   });
 
@@ -90,6 +101,5 @@ export function parseGeminiReviewResponse(
 
   return validateSegmentationResult(normalized, maxRegionsPerTarget, {
     extractionFields: options.extractionFields,
-    requireFinishPage: true,
   });
 }

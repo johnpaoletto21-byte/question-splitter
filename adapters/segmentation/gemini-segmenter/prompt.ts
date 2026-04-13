@@ -6,8 +6,8 @@
  * The prompt is built from:
  *   - The target type and max region count from the active profile.
  *   - The ordered list of page numbers being analyzed.
- *   - An optional caller-supplied promptSnapshot (TASK-502 will wire this;
- *     when empty the built-in prompt text is used in full).
+ *   - Chunk context (start/end pages) for the current processing chunk.
+ *   - An optional caller-supplied promptSnapshot.
  *
  * No provider SDK imports — this is pure string construction.
  */
@@ -18,8 +18,10 @@ import type { ExtractionFieldDefinition } from '../../../core/extraction-fields'
 import { DEFAULT_AGENT1_PROMPT } from '../../../core/prompt-config-store/default-prompts';
 
 export interface BuildSegmentationPromptOptions {
-  focusPageNumber?: number;
-  allowedRegionPageNumbers?: ReadonlyArray<number>;
+  /** First page number in the current chunk. */
+  chunkStartPage?: number;
+  /** Last page number in the current chunk. */
+  chunkEndPage?: number;
   extractionFields?: ReadonlyArray<ExtractionFieldDefinition>;
 }
 
@@ -28,8 +30,7 @@ export interface BuildSegmentationPromptOptions {
  *
  * @param pages          Ordered prepared page images included in this call.
  * @param profile        The active crop target profile (target_type, max regions).
- * @param promptSnapshot Optional session instruction block (from TASK-502 prompt store).
- *                       When empty, the built-in default instruction block is used.
+ * @param promptSnapshot Optional session instruction block. When empty, the built-in default is used.
  * @returns              Prompt text string to include as the first `text` part.
  */
 export function buildSegmentationPrompt(
@@ -45,22 +46,18 @@ export function buildSegmentationPrompt(
   const pageList = pages
     .map((p) => `  - Page ${p.page_number} (source: ${p.source_id})`)
     .join('\n');
-  const focusBlock = options.focusPageNumber === undefined
-    ? ''
-    : `
 
-## Focus Page Rule
-- Focus page: ${options.focusPageNumber}
-- Return only targets whose final visible content ends on the focus page.
-- Set finish_page_number to ${options.focusPageNumber} for every returned target.
-- A target may include the focus page and, if needed, the immediately previous page only.
-- Allowed output region page_numbers: ${(options.allowedRegionPageNumbers ?? []).join(', ')}
-- Use only the listed page_number labels from "Pages provided"; image order is not page number.
-- The first provided image may be a page like 4, not page 1. Never infer page_number from image position.
-- Every returned target MUST have at least one region on the focus page (page ${options.focusPageNumber}). If a target has content only on a previous page, do not return it — it belongs to a previous window.
-- Use the next page only to decide whether a target really continues past the focus page; do not return targets that end after the focus page.
-- The next page is context only and must not appear in regions.
-- If no target ends on the focus page, return an empty targets array.`;
+  const chunkBlock = options.chunkStartPage !== undefined && options.chunkEndPage !== undefined
+    ? `
+## Chunk Context
+- This chunk covers pages ${options.chunkStartPage} to ${options.chunkEndPage}.
+- Return ALL questions that START in this chunk (i.e. whose question number header first appears in these pages).
+- A question "starts" where its question number header first appears.
+- Include the full extent of each question within this chunk, even if it continues to the last page.
+- Do NOT return questions whose header appeared on a page before page ${options.chunkStartPage} — those belong to a previous chunk.
+- If you see a continuation of a previous question at the top of page ${options.chunkStartPage} without a new question header, do NOT create a target for it.`
+    : '';
+
   const extractionFields = options.extractionFields ?? [];
   const fieldBlock = extractionFields.length === 0
     ? ''
@@ -75,7 +72,7 @@ ${extractionFields.map((field) => `- ${field.key}: ${field.description}`).join('
 ## Run Context
 - Target type: ${profile.target_type}
 - Maximum page regions per target: ${profile.max_regions_per_target}
-${focusBlock}
+${chunkBlock}
 ${fieldBlock}
 
 ## Pages provided (in order)
