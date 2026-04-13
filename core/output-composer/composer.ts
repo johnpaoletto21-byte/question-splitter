@@ -68,11 +68,10 @@ export async function composeOutput(
     );
   }
 
-  // INV-3 guard: reject 0 or 3+ regions explicitly — no silent 3+ support.
-  if (regions.length === 0 || regions.length > 2) {
+  if (regions.length === 0) {
     throw new CompositionError(
       targetId,
-      `unsupported region count: ${regions.length} (V1 supports 1 or 2)`,
+      `unsupported region count: 0`,
     );
   }
 
@@ -80,16 +79,18 @@ export async function composeOutput(
 
   if (regions.length === 1) {
     // One-region passthrough: the crop file IS the final output.
-    // No image I/O needed; return the existing file path directly.
     localOutputPath = regions[0].cropFilePath;
   } else {
-    // Two-region top-to-bottom combination.
-    // Region 0 is top, region 1 is bottom (reading order from Agent 2).
-    localOutputPath = await imageStacker(
-      targetId,
-      regions[0].cropFilePath,
-      regions[1].cropFilePath,
-    );
+    // Multi-region top-to-bottom combination.
+    // Chain: stack regions sequentially in reading order.
+    localOutputPath = regions[0].cropFilePath;
+    for (let i = 1; i < regions.length; i++) {
+      localOutputPath = await imageStacker(
+        `${targetId}_step${i}`,
+        localOutputPath,
+        regions[i].cropFilePath,
+      );
+    }
   }
 
   const outputFileName = path.basename(localOutputPath);

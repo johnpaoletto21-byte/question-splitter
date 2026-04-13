@@ -1,8 +1,9 @@
 /**
  * adapters/segmentation-review/gemini-reviewer/reviewer.ts
  *
- * Main Gemini reviewer adapter — the public entry point for Agent 1.5.
- * Reuses shared Gemini utilities from the segmenter adapter.
+ * Main Gemini reviewer adapter — the public entry point for Agent 2.
+ * Now operates per-chunk (receives chunk's pages and chunk's segmentation).
+ * No repair loops — relies on Gemini structured output mode for valid JSON.
  */
 
 import type { PreparedPageImage } from '../../../core/source-model/types';
@@ -20,7 +21,6 @@ import { buildGeminiReviewSchema } from './schema';
 import type { GeminiReviewerConfig, HttpPostFn } from './types';
 
 export const DEFAULT_GEMINI_REVIEWER_MODEL = 'gemini-3.1-flash-lite-preview';
-const MAX_REVIEW_REPAIR_RETRIES = 2;
 
 const defaultHttpPost: HttpPostFn = async (url, body, headers) => {
   const response = await fetch(url, {
@@ -37,35 +37,6 @@ const defaultHttpPost: HttpPostFn = async (url, body, headers) => {
   return response.json();
 };
 
-function isSegmentationSchemaError(err: unknown): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    (err as Record<string, unknown>)['code'] === 'SEGMENTATION_SCHEMA_INVALID'
-  );
-}
-
-function buildRepairPrompt(
-  originalPrompt: string,
-  validationMessage: string,
-  invalidOutput: unknown,
-): string {
-  return `${originalPrompt}
-
-## Correction Required
-Your previous review response failed validation:
-${validationMessage}
-
-Return corrected JSON. Use verdict "pass" if Agent 1 was correct, or verdict "corrected" with a valid targets array.
-- Every target must have finish_page_number set to the last page with visible content.
-- Do not include bbox_1000 in regions.
-- Maximum 2 regions per target.
-
-Previous invalid JSON:
-${JSON.stringify(invalidOutput, null, 2)}
-`;
-}
-
 export async function reviewSegmentation(
   runId: string,
   segmentationResult: SegmentationResult,
@@ -77,7 +48,6 @@ export async function reviewSegmentation(
   encodeFn: (path: string) => string = encodePageImageAsBase64,
   options: {
     extractionFields?: ReadonlyArray<ExtractionFieldDefinition>;
-    maxRepairRetries?: number;
   } = {},
 ): Promise<SegmentationResult | null> {
   const model = config.model ?? DEFAULT_GEMINI_REVIEWER_MODEL;
@@ -89,50 +59,21 @@ export async function reviewSegmentation(
   const promptText = buildReviewPrompt(pages, profile, promptSnapshot, segmentationResult, {
     extractionFields,
   });
-  const responseSchema = buildGeminiReviewSchema({ extractionFields });
-  const maxRepairRetries = options.maxRepairRetries ?? MAX_REVIEW_REPAIR_RETRIES;
-  let currentPrompt = promptText;
-  let initialValidationMessage = '';
+  const responseSchema = buildGeminiReviewSchema({
+    extractionFields,
+    maxRegionsPerTarget: profile.max_regions_per_target,
+  });
 
-  for (let attempt = 0; attempt <= maxRepairRetries; attempt++) {
-    const requestBody = buildGeminiRequest(currentPrompt, pages, encodeFn, responseSchema);
-    const rawResponse = await httpPost(url, requestBody, {
-      'Content-Type': 'application/json',
-    });
-    const parsedJson = unwrapGeminiResponse(rawResponse);
+  const requestBody = buildGeminiRequest(promptText, pages, encodeFn, responseSchema);
+  const rawResponse = await httpPost(url, requestBody, {
+    'Content-Type': 'application/json',
+  });
+  const parsedJson = unwrapGeminiResponse(rawResponse);
 
-    try {
-      return parseGeminiReviewResponse(
-        parsedJson,
-        runId,
-        profile.max_regions_per_target,
-        { extractionFields },
-      );
-    } catch (err) {
-      if (!isSegmentationSchemaError(err)) {
-        throw err;
-      }
-
-      const validationMessage = String(
-        (err as Record<string, unknown>)['message'] ?? 'Review schema invalid',
-      );
-      if (initialValidationMessage === '') {
-        initialValidationMessage = validationMessage;
-      }
-
-      if (attempt === maxRepairRetries) {
-        throw {
-          ...(err as Record<string, unknown>),
-          message:
-            `${validationMessage} ` +
-            `(after ${maxRepairRetries} retries; ` +
-            `initial validation error: ${initialValidationMessage})`,
-        };
-      }
-
-      currentPrompt = buildRepairPrompt(promptText, validationMessage, parsedJson);
-    }
-  }
-
-  throw new Error('reviewSegmentation: unreachable retry loop exit');
+  return parseGeminiReviewResponse(
+    parsedJson,
+    runId,
+    profile.max_regions_per_target,
+    { extractionFields },
+  );
 }

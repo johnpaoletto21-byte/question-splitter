@@ -16,10 +16,12 @@
 export interface PromptConfigState {
   /** Current Agent 1 (segmenter) editable instruction block. Empty string means use built-in. */
   agent1Prompt: string;
-  /** Current Agent 1.5 (reviewer) editable instruction block. Empty string means use built-in. */
+  /** Current Agent 2 (reviewer) editable instruction block. Empty string means use built-in. */
   reviewerPrompt: string;
-  /** Current Agent 2 (localizer) editable instruction block. Empty string means use built-in. */
+  /** Current Agent 3 (localizer) editable instruction block. Empty string means use built-in. */
   agent2Prompt: string;
+  /** Current Agent 4 (deduplicator) editable instruction block. Empty string means use built-in. */
+  deduplicatorPrompt: string;
 }
 
 /**
@@ -29,12 +31,14 @@ export interface PromptConfigState {
  * Mid-run UI edits to the store do not affect any active run's snapshot (INV-7).
  */
 export interface PromptSnapshot {
-  /** Agent 1 prompt at run-start time. */
+  /** Agent 1 (segmenter) prompt at run-start time. */
   readonly agent1Prompt: string;
-  /** Agent 1.5 (reviewer) prompt at run-start time. */
+  /** Agent 2 (reviewer) prompt at run-start time. */
   readonly reviewerPrompt: string;
-  /** Agent 2 prompt at run-start time. */
+  /** Agent 3 (localizer) prompt at run-start time. */
   readonly agent2Prompt: string;
+  /** Agent 4 (deduplicator) prompt at run-start time. */
+  readonly deduplicatorPrompt: string;
   /** ISO-8601 timestamp when this snapshot was captured. */
   readonly capturedAt: string;
 }

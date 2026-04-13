@@ -1,19 +1,11 @@
 /**
  * adapters/localization/gemini-localizer/prompt.ts
  *
- * Constructs the localization prompt for Agent 2 (Region Localizer).
+ * Constructs the localization prompt for Agent 3 (Region Localizer).
  *
- * The prompt is built from:
- *   - The single target being localized (target_id and its page regions).
- *   - The active crop target profile (for context on target_type).
- *   - An optional caller-supplied promptSnapshot (TASK-502 will wire this;
- *     when empty the built-in prompt text is used).
- *
- * Design:
- *   - The prompt scopes the model to ONE target at a time (per Boundary E).
- *   - It explicitly provides the expected page_numbers so the model can
- *     confirm its regions match what Agent 1 identified.
- *   - No provider SDK imports — pure string construction.
+ * The prompt scopes the model to ONE target at a time.
+ * Includes question_text context (with inline diagram notes) to help the
+ * localizer understand what content to encompass.
  */
 
 import type { CropTargetProfile } from '../../../core/crop-target-profile/types';
@@ -22,12 +14,6 @@ import { DEFAULT_AGENT2_PROMPT } from '../../../core/prompt-config-store/default
 
 /**
  * Builds the text portion of the Gemini localization prompt for one target.
- *
- * @param target         The Agent 1 segmentation target to localize.
- * @param profile        The active crop target profile (provides target_type context).
- * @param promptSnapshot Optional session instruction block (from TASK-502 prompt store).
- *                       When empty, the built-in default instruction block is used.
- * @returns              Prompt text string to include as the first `text` part.
  */
 export function buildLocalizationPrompt(
   target: SegmentationTarget,
@@ -42,11 +28,17 @@ export function buildLocalizationPrompt(
     .map((r, i) => `  - Region ${i + 1}: Page ${r.page_number}`)
     .join('\n');
 
+  const questionContext = target.question_text
+    ? `- Question text preview: ${target.question_text}`
+    : '';
+
   return `${instructionBlock}
 
 ## Run Context
 - Target ID: ${target.target_id}
 - Target type: ${profile.target_type}
+- Question number: ${target.question_number ?? '(unknown)'}
+${questionContext}
 - Finish page: ${target.finish_page_number ?? Math.max(...target.regions.map((r) => r.page_number))}
 - You may receive the previous page as context. Return bbox entries only for the page regions listed below.
 - Page regions to localize (in order):

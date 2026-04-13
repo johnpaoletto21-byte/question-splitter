@@ -15,7 +15,7 @@ import { CropTargetProfile, ProfileValidationError } from './types';
 /** The single V1 active profile.  Attached to RunContext at run start. */
 export const V1_ACTIVE_PROFILE: CropTargetProfile = {
   target_type: 'question',
-  max_regions_per_target: 2,
+  max_regions_per_target: 10,
   composition_mode: 'top_to_bottom',
 };
 
@@ -46,10 +46,10 @@ export function validateCropTargetProfile(profile: CropTargetProfile): void {
   if (
     !Number.isInteger(profile.max_regions_per_target) ||
     profile.max_regions_per_target < 1 ||
-    profile.max_regions_per_target > 2
+    profile.max_regions_per_target > 10
   ) {
     throw new ProfileValidationError(
-      `max_regions_per_target must be an integer in [1, 2] (V1 limit, INV-3). ` +
+      `max_regions_per_target must be an integer in [1, 10]. ` +
         `Received: ${JSON.stringify(profile.max_regions_per_target)}`
     );
   }
