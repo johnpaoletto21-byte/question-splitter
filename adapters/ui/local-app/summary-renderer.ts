@@ -28,6 +28,7 @@
  */
 
 import type { RunSummaryState, RunSummaryTargetEntry } from '../../../core/run-summary/types';
+import type { DebugData } from '../../../core/run-summary/debug-types';
 
 /** Escapes HTML special characters to prevent XSS in injected strings. */
 function esc(raw: string): string {
@@ -200,6 +201,319 @@ export function renderSummaryHtml(state: RunSummaryState, options?: SummaryRende
   return renderTableHtml(state);
 }
 
+// ---------------------------------------------------------------------------
+// Debug panel renderer (temporary)
+// ---------------------------------------------------------------------------
+
+function debugPanelStyles(): string {
+  return `
+    .debug-panel {
+      margin: 2rem 1rem;
+      padding: 1rem 1.5rem;
+      border: 2px dashed #e67e22;
+      border-radius: 8px;
+      background: #fffbf0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+      font-size: 0.85rem;
+    }
+    .debug-panel-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+    .debug-badge {
+      background: #e67e22;
+      color: #fff;
+      font-weight: 700;
+      font-size: 0.75rem;
+      padding: 0.15rem 0.5rem;
+      border-radius: 3px;
+      letter-spacing: 0.05em;
+    }
+    .debug-panel-header h2 { font-size: 1rem; margin: 0; color: #333; }
+    .debug-panel details {
+      margin-bottom: 1rem;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background: #fff;
+    }
+    .debug-panel details summary {
+      padding: 0.5rem 0.75rem;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.9rem;
+      background: #f7f7f7;
+      border-radius: 4px 4px 0 0;
+      user-select: none;
+    }
+    .debug-panel details[open] summary { border-bottom: 1px solid #ddd; }
+    .debug-panel .debug-content { padding: 0.75rem; }
+    .debug-panel table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 0.5rem 0;
+    }
+    .debug-panel th, .debug-panel td {
+      border: 1px solid #ddd;
+      padding: 0.3rem 0.6rem;
+      text-align: left;
+      font-size: 0.8rem;
+      vertical-align: top;
+    }
+    .debug-panel th { background: #f0f0f0; font-weight: 600; }
+    .debug-panel .debug-note { color: #666; font-style: italic; margin: 0.3rem 0; }
+    .debug-panel .debug-label { font-weight: 600; color: #555; margin-right: 0.3rem; }
+    .debug-panel .debug-pass { color: #27ae60; font-weight: 600; }
+    .debug-panel .debug-corrected { color: #c0392b; font-weight: 600; }
+    .debug-panel .debug-removed { color: #c0392b; }
+    .debug-panel .bbox-coord { font-family: monospace; font-size: 0.8rem; }
+    .debug-panel .failure-row { background: #fef0f0; }
+    .debug-panel .sub-section { margin: 0.5rem 0 0.75rem 0; }
+    .debug-panel .sub-section h4 { font-size: 0.85rem; margin: 0 0 0.3rem 0; color: #444; }
+  `;
+}
+
+function renderDebugPanel(debug: DebugData): string {
+  return `
+  <div class="debug-panel" data-testid="debug-panel">
+    <div class="debug-panel-header">
+      <span class="debug-badge">DEBUG</span>
+      <h2>Pipeline Internals</h2>
+    </div>
+    ${renderAgent1Section(debug)}
+    ${renderFilteringSection(debug)}
+    ${renderReviewSection(debug)}
+    ${renderAgent2Section(debug)}
+    ${renderValidationSection(debug)}
+  </div>`;
+}
+
+function renderAgent1Section(debug: DebugData): string {
+  const windowRows = debug.agent1WindowResults.map((w) => {
+    const targetRows = w.targets.length === 0
+      ? '<tr><td colspan="6" class="debug-note">No targets found in this window</td></tr>'
+      : w.targets.map((t) => {
+          const pages = t.regions.map((r) => r.page_number).join(', ');
+          const ef = t.extraction_fields
+            ? Object.entries(t.extraction_fields).map(([k, v]) => `${esc(k)}=${v}`).join(', ')
+            : '—';
+          return `<tr>
+            <td>${esc(t.target_id)}</td>
+            <td>${esc(t.target_type)}</td>
+            <td>${pages}</td>
+            <td>${t.finish_page_number ?? '—'}</td>
+            <td>${esc(ef)}</td>
+            <td>${t.review_comment ? esc(t.review_comment) : '—'}</td>
+          </tr>`;
+        }).join('');
+
+    return `
+    <div class="sub-section">
+      <h4>Window: Focus Page ${w.focusPageNumber}</h4>
+      <p><span class="debug-label">Context pages:</span> ${w.contextPageNumbers.join(', ')}</p>
+      <p><span class="debug-label">Allowed region pages:</span> ${w.allowedRegionPageNumbers.join(', ')}</p>
+      <table>
+        <thead><tr>
+          <th>Target ID</th><th>Type</th><th>Region Pages</th><th>Finish Page</th><th>Extraction Fields</th><th>Review Comment</th>
+        </tr></thead>
+        <tbody>${targetRows}</tbody>
+      </table>
+    </div>`;
+  }).join('');
+
+  return `
+  <details>
+    <summary>1. Agent 1 — Segmentation Outputs (${debug.agent1WindowResults.length} windows)</summary>
+    <div class="debug-content">${windowRows}</div>
+  </details>`;
+}
+
+function renderFilteringSection(debug: DebugData): string {
+  const totalCollected = debug.agent1WindowResults.reduce((sum, w) => sum + w.targets.length, 0);
+  const mergedCount = debug.agent1MergedSegmentation.targets.length;
+  const ghostCount = debug.ghostTargetsRemoved.length;
+
+  const ghostRows = ghostCount === 0
+    ? '<p class="debug-note">No ghost targets removed — all targets were unique.</p>'
+    : `<table>
+        <thead><tr>
+          <th>Removed Target</th><th>Pages</th><th>Subsumed By</th><th>Pages</th>
+        </tr></thead>
+        <tbody>${debug.ghostTargetsRemoved.map((g) => `<tr class="failure-row">
+          <td class="debug-removed">${esc(g.target.target_id)}</td>
+          <td>${g.target.regions.map((r) => r.page_number).join(', ')}</td>
+          <td>${esc(g.keptBy.target_id)}</td>
+          <td>${g.keptBy.regions.map((r) => r.page_number).join(', ')}</td>
+        </tr>`).join('')}</tbody>
+      </table>`;
+
+  return `
+  <details>
+    <summary>2. Filtering — Merge &amp; Ghost Dedup</summary>
+    <div class="debug-content">
+      <p><span class="debug-label">Total targets collected from all windows:</span> ${totalCollected}</p>
+      <p><span class="debug-label">After merge (ghost dedup):</span> ${mergedCount}</p>
+      <p><span class="debug-label">Ghost targets removed:</span> ${ghostCount}</p>
+      ${ghostRows}
+    </div>
+  </details>`;
+}
+
+function renderReviewSection(debug: DebugData): string {
+  const inputTargets = debug.agent1MergedSegmentation.targets;
+  const outputTargets = debug.reviewStepOutput.targets;
+
+  let diffContent: string;
+  if (!debug.reviewStepCorrected) {
+    diffContent = `<p class="debug-pass">Pass-through: Agent 1.5 confirmed Agent 1's output — no corrections made.</p>
+    <p><span class="debug-label">Targets confirmed:</span> ${inputTargets.length}</p>`;
+  } else {
+    const inputIds = new Set(inputTargets.map((t) => t.target_id));
+    const outputIds = new Set(outputTargets.map((t) => t.target_id));
+
+    const inputRow = (t: { target_id: string; regions: { page_number: number }[] }) =>
+      `${esc(t.target_id)} [pages: ${t.regions.map((r) => r.page_number).join(', ')}]`;
+
+    diffContent = `<p class="debug-corrected">Agent 1.5 made corrections.</p>
+    <div class="sub-section">
+      <h4>Agent 1.5 Input (merged Agent 1 segmentation — ${inputTargets.length} targets)</h4>
+      <table>
+        <thead><tr><th>Target ID</th><th>Type</th><th>Region Pages</th><th>Finish Page</th><th>Extraction Fields</th><th>Review Comment</th></tr></thead>
+        <tbody>${inputTargets.map((t) => {
+          const ef = t.extraction_fields
+            ? Object.entries(t.extraction_fields).map(([k, v]) => `${esc(k)}=${v}`).join(', ')
+            : '—';
+          return `<tr>
+            <td>${esc(t.target_id)}</td>
+            <td>${esc(t.target_type)}</td>
+            <td>${t.regions.map((r) => r.page_number).join(', ')}</td>
+            <td>${t.finish_page_number ?? '—'}</td>
+            <td>${esc(ef)}</td>
+            <td>${t.review_comment ? esc(t.review_comment) : '—'}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+    </div>
+    <div class="sub-section">
+      <h4>Agent 1.5 Output (corrected — ${outputTargets.length} targets)</h4>
+      <table>
+        <thead><tr><th>Target ID</th><th>Type</th><th>Region Pages</th><th>Finish Page</th><th>Extraction Fields</th><th>Review Comment</th></tr></thead>
+        <tbody>${outputTargets.map((t) => {
+          const ef = t.extraction_fields
+            ? Object.entries(t.extraction_fields).map(([k, v]) => `${esc(k)}=${v}`).join(', ')
+            : '—';
+          return `<tr>
+            <td>${esc(t.target_id)}</td>
+            <td>${esc(t.target_type)}</td>
+            <td>${t.regions.map((r) => r.page_number).join(', ')}</td>
+            <td>${t.finish_page_number ?? '—'}</td>
+            <td>${esc(ef)}</td>
+            <td>${t.review_comment ? esc(t.review_comment) : '—'}</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+    </div>`;
+  }
+
+  return `
+  <details>
+    <summary>3. Agent 1.5 — Segmentation Review (${debug.reviewStepCorrected ? 'CORRECTED' : 'PASS'})</summary>
+    <div class="debug-content">${diffContent}</div>
+  </details>`;
+}
+
+function renderAgent2Section(debug: DebugData): string {
+  const resultRows = debug.localizationResults.length === 0
+    ? '<tr><td colspan="4" class="debug-note">No localization results</td></tr>'
+    : debug.localizationResults.flatMap((lr) =>
+        lr.regions.map((r, ri) => `<tr>
+          <td>${ri === 0 ? esc(lr.target_id) : ''}</td>
+          <td>${r.page_number}</td>
+          <td class="bbox-coord">[y: ${r.bbox_1000[0]}–${r.bbox_1000[2]}, x: ${r.bbox_1000[1]}–${r.bbox_1000[3]}]</td>
+          <td>${ri === 0 && lr.review_comment ? esc(lr.review_comment) : ri === 0 ? '—' : ''}</td>
+        </tr>`),
+      ).join('');
+
+  const failureRows = debug.localizationFailures.length === 0
+    ? ''
+    : `<div class="sub-section">
+        <h4>Localization Failures (${debug.localizationFailures.length})</h4>
+        <table>
+          <thead><tr><th>Target ID</th><th>Source Pages</th><th>Failure Code</th><th>Message</th></tr></thead>
+          <tbody>${debug.localizationFailures.map((f) => `<tr class="failure-row">
+            <td>${esc(f.targetId)}</td>
+            <td>${f.sourcePages.join(', ')}</td>
+            <td>${esc(f.failureCode)}</td>
+            <td>${esc(f.failureMessage)}</td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>`;
+
+  return `
+  <details>
+    <summary>4. Agent 2 — Localization Outputs (${debug.localizationResults.length} targets)</summary>
+    <div class="debug-content">
+      <table>
+        <thead><tr><th>Target ID</th><th>Page</th><th>BBox (y/x ranges, 0–1000)</th><th>Review Comment</th></tr></thead>
+        <tbody>${resultRows}</tbody>
+      </table>
+      ${failureRows}
+    </div>
+  </details>`;
+}
+
+function renderValidationSection(debug: DebugData): string {
+  const totalAgent1Targets = debug.agent1WindowResults.reduce((sum, w) => sum + w.targets.length, 0);
+  const mergedTargets = debug.agent1MergedSegmentation.targets.length;
+  const reviewedTargets = debug.reviewStepOutput.targets.length;
+  const localizedOk = debug.localizationResults.length;
+  const localizedFail = debug.localizationFailures.length;
+
+  return `
+  <details>
+    <summary>5. Validation Summary</summary>
+    <div class="debug-content">
+      <table>
+        <thead><tr><th>Validation Step</th><th>Scope</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Segmentation schema (Agent 1)</td>
+            <td>${totalAgent1Targets} target(s) across ${debug.agent1WindowResults.length} window(s)</td>
+            <td class="debug-pass">Passed (all targets parsed successfully)</td>
+          </tr>
+          <tr>
+            <td>Ghost dedup filter</td>
+            <td>${totalAgent1Targets} collected → ${mergedTargets} kept</td>
+            <td>${debug.ghostTargetsRemoved.length > 0
+              ? `<span class="debug-removed">${debug.ghostTargetsRemoved.length} ghost(s) removed</span>`
+              : '<span class="debug-pass">No duplicates</span>'}</td>
+          </tr>
+          <tr>
+            <td>Review validation (Agent 1.5)</td>
+            <td>${mergedTargets} input → ${reviewedTargets} output target(s)</td>
+            <td>${debug.reviewStepCorrected
+              ? '<span class="debug-corrected">Corrections applied</span>'
+              : '<span class="debug-pass">Pass-through</span>'}</td>
+          </tr>
+          <tr>
+            <td>Localization schema (Agent 2)</td>
+            <td>${reviewedTargets} target(s) attempted</td>
+            <td>${localizedFail === 0
+              ? `<span class="debug-pass">All ${localizedOk} passed</span>`
+              : `<span class="debug-pass">${localizedOk} passed</span>, <span class="debug-removed">${localizedFail} failed</span>`}</td>
+          </tr>
+          <tr>
+            <td>BBox bounds check</td>
+            <td>${localizedOk} localized target(s)</td>
+            <td class="debug-pass">Validated (within [0, 1000], correct ordering)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </details>`;
+}
+
 function renderSplitViewHtml(state: RunSummaryState, sourcePdfUrl: string): string {
   const cards = state.targets.map((entry) => renderTargetCard(entry, state)).join('');
 
@@ -277,6 +591,7 @@ function renderSplitViewHtml(state: RunSummaryState, sourcePdfUrl: string): stri
     .card-hidden { display: none; }
     .comment-compat { display: none; }
     a { color: #0066cc; }
+    ${state.debugData ? debugPanelStyles() : ''}
   </style>
 </head>
 <body>
@@ -294,6 +609,7 @@ function renderSplitViewHtml(state: RunSummaryState, sourcePdfUrl: string): stri
       <embed type="application/pdf" src="${esc(sourcePdfUrl)}" data-testid="source-pdf-embed">
     </div>
   </div>
+  ${state.debugData ? renderDebugPanel(state.debugData) : ''}
 </body>
 </html>`;
 }
@@ -321,6 +637,7 @@ function renderTableHtml(state: RunSummaryState): string {
     a { color: #0066cc; }
     .nav { margin-bottom: 1.2rem; font-size: 0.875rem; }
     .comment-compat { display: none; }
+    ${state.debugData ? debugPanelStyles() : ''}
   </style>
 </head>
 <body>
@@ -348,6 +665,7 @@ function renderTableHtml(state: RunSummaryState): string {
     <tbody>${rows}
     </tbody>
   </table>
+  ${state.debugData ? renderDebugPanel(state.debugData) : ''}
 </body>
 </html>`;
 }

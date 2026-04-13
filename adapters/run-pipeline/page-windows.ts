@@ -1,6 +1,7 @@
 import type { PreparedPageImage } from '../../core/source-model/types';
 import type { SegmentationResult } from '../../core/segmentation-contract/types';
 import type { SegmentationTarget } from '../../core/segmentation-contract/types';
+import type { GhostTargetDebug } from '../../core/run-summary/debug-types';
 
 export interface SegmentationPageWindow {
   focusPageNumber: number;
@@ -91,4 +92,33 @@ export function mergeWindowedSegmentationResults(
   }));
 
   return { run_id: runId, targets };
+}
+
+/**
+ * Identifies ghost targets that would be removed by mergeWindowedSegmentationResults.
+ * Returns debug info about each removed target and which wider target subsumed it.
+ */
+export function identifyGhostTargets(
+  results: ReadonlyArray<SegmentationResult>,
+): GhostTargetDebug[] {
+  const collected: SegmentationTarget[] = [];
+  for (const result of results) {
+    for (const target of result.targets) {
+      collected.push(target);
+    }
+  }
+
+  const pageSets = collected.map(getPageSet);
+  const ghosts: GhostTargetDebug[] = [];
+
+  for (let i = 0; i < collected.length; i++) {
+    for (let j = 0; j < collected.length; j++) {
+      if (i !== j && isStrictSubset(pageSets[i], pageSets[j])) {
+        ghosts.push({ target: collected[i], keptBy: collected[j] });
+        break;
+      }
+    }
+  }
+
+  return ghosts;
 }

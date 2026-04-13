@@ -14,6 +14,7 @@
  */
 
 import type { ExtractionFieldDefinition } from '../extraction-fields';
+import type { DebugData } from './debug-types';
 
 /**
  * Per-target summary entry as visible in the local run UI.
@@ -119,4 +120,6 @@ export interface RunSummaryState {
   run_id: string;
   extraction_fields?: ExtractionFieldDefinition[];
   targets: RunSummaryTargetEntry[];
+  /** Temporary pipeline debug data. Omit in production. */
+  debugData?: DebugData;
 }
