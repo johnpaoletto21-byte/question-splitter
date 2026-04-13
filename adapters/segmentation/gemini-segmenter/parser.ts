@@ -16,11 +16,35 @@
 
 import { validateSegmentationResult } from '../../../core/segmentation-contract/validation';
 import type { SegmentationResult } from '../../../core/segmentation-contract/types';
+import type { PreparedPageImage } from '../../../core/source-model/types';
 import type { ExtractionFieldDefinition } from '../../../core/extraction-fields';
 import type { GeminiRawSegmentationOutput, GeminiRawTarget } from './types';
 
 export interface ParseGeminiSegmentationOptions {
   extractionFields?: ReadonlyArray<ExtractionFieldDefinition>;
+}
+
+// ---------------------------------------------------------------------------
+// Image-index → page-number mapping
+// ---------------------------------------------------------------------------
+
+/**
+ * Maps a 1-based image index to the corresponding page_number using the
+ * ordered pages array that was sent to Gemini.
+ *
+ * @throws Error if the index is out of range.
+ */
+function imageIndexToPageNumber(imageIndex: number, pages: ReadonlyArray<PreparedPageImage>): number {
+  const coerced = typeof imageIndex === 'string' ? Number(imageIndex) : imageIndex;
+  if (!Number.isInteger(coerced) || coerced < 1 || coerced > pages.length) {
+    throw {
+      code: 'SEGMENTATION_SCHEMA_INVALID',
+      message:
+        `image_index ${imageIndex} is out of range — ` +
+        `expected 1..${pages.length} (${pages.length} images were provided)`,
+    };
+  }
+  return pages[coerced - 1].page_number;
 }
 
 // ---------------------------------------------------------------------------
@@ -67,8 +91,13 @@ function assertRawShape(raw: unknown): asserts raw is GeminiRawSegmentationOutpu
  * Parses the raw Gemini structured JSON output and returns a normalized
  * SegmentationResult.
  *
+ * Gemini returns image_index (1-based image position) instead of page_number.
+ * This parser maps each image_index back to the correct page_number using
+ * the ordered pages array that was sent to Gemini.
+ *
  * @param raw      The parsed JSON object from Gemini's response body.
  * @param runId    The run_id for the current orchestrator run.
+ * @param pages    The ordered PreparedPageImage[] sent to Gemini (for index→page mapping).
  * @param maxRegionsPerTarget  Max regions per target (from active profile).
  * @returns        Validated, normalized SegmentationResult.
  * @throws         Error or SegmentationValidationError on invalid response.
@@ -76,6 +105,7 @@ function assertRawShape(raw: unknown): asserts raw is GeminiRawSegmentationOutpu
 export function parseGeminiSegmentationResponse(
   raw: unknown,
   runId: string,
+  pages: ReadonlyArray<PreparedPageImage>,
   maxRegionsPerTarget: number = 10,
   options: ParseGeminiSegmentationOptions = {},
 ): SegmentationResult {
@@ -84,22 +114,18 @@ export function parseGeminiSegmentationResponse(
   // Assign sequential target_id values in the order Gemini returned them
   // (reading order). The ID encodes position so downstream sorting is stable.
   const targets = (raw.targets as GeminiRawTarget[]).map((t, i) => {
-    // Gemini may return page numbers as strings when enum constraints are
-    // used. Coerce back to numbers so downstream validation sees the expected integer type.
+    // Map image_index → page_number using the pages array.
     const regions = t.regions.map((r) => ({
-      ...r,
-      page_number: typeof r.page_number === 'string' ? Number(r.page_number) : r.page_number,
+      page_number: imageIndexToPageNumber(r.image_index, pages),
     }));
     const target: Record<string, unknown> = {
       target_id: makeTargetId(i),
       target_type: t.target_type,
       regions,
     };
-    const rawFinish = t.finish_page_number;
-    if (typeof rawFinish === 'number') {
-      target['finish_page_number'] = rawFinish;
-    } else if (typeof rawFinish === 'string') {
-      target['finish_page_number'] = Number(rawFinish);
+    const rawFinish = t.finish_image_index;
+    if (rawFinish !== undefined) {
+      target['finish_page_number'] = imageIndexToPageNumber(rawFinish, pages);
     }
     if (t.extraction_fields !== undefined) {
       target['extraction_fields'] = t.extraction_fields;

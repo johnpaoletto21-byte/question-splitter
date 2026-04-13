@@ -69,24 +69,26 @@ export function buildGeminiSegmentationSchema(input: {
     regions: {
       type: 'array',
       description:
-        'Ordered page references for this target. One entry per page the question appears on.',
+        'Ordered image references for this target. One entry per image the question appears on.',
       minItems: 1,
       maxItems: maxRegions,
       items: {
         type: 'object',
         properties: {
-          page_number: {
+          image_index: {
             type: 'integer',
-            description: '1-based page number where part of this target appears.',
+            description:
+              '1-based position in the provided images (Image 1 = first image, Image 2 = second, etc.).',
             minimum: 1,
           },
         },
-        required: ['page_number'],
+        required: ['image_index'],
       },
     },
-    finish_page_number: {
+    finish_image_index: {
       type: 'integer',
-      description: 'The 1-based page number where this target\'s final visible content ends.',
+      description:
+        'The 1-based image position where this target\'s final visible content ends.',
       minimum: 1,
     },
     review_comment: {
@@ -97,7 +99,7 @@ export function buildGeminiSegmentationSchema(input: {
     },
   };
 
-  const targetRequired = ['target_type', 'regions', 'finish_page_number', 'question_number', 'question_text', 'sub_questions'];
+  const targetRequired = ['target_type', 'regions', 'finish_image_index', 'question_number', 'question_text', 'sub_questions'];
 
   if (extractionFields.length > 0) {
     targetProperties['extraction_fields'] = buildExtractionFieldsSchema(extractionFields);

@@ -190,6 +190,7 @@ export async function segmentPages(
   return parseGeminiSegmentationResponse(
     parsedJson,
     runId,
+    pages,
     profile.max_regions_per_target,
     { extractionFields },
   );
