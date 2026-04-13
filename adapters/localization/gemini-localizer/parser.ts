@@ -1,29 +1,19 @@
 /**
  * adapters/localization/gemini-localizer/parser.ts
  *
- * Parses and translates the raw Gemini structured output into the
- * normalized LocalizationResult contract for one target.
+ * Parses the raw Gemini structured output from a window localization call
+ * into WindowLocalizationResult.
  *
- * Responsibilities:
- *   1. Validate the raw JSON structure from Gemini.
- *   2. Carry the target_id from the incoming SegmentationTarget
- *      (Agent 2 never invents or changes target identity).
- *   3. Cross-validate region count and page_number order against the
- *      Agent 1 SegmentationTarget (Agent 2 must not reorder or add regions).
- *   4. Validate each bbox_1000 via the localization contract.
- *   5. Return a fully normalized, validated LocalizationResult.
+ * Agent 3 receives 1-3 images and identifies which questions appear in them.
+ * It returns image_position (1/2/3) which we map deterministically to
+ * page_number using the windowPages array.
  *
- * Nothing from this file should reach outside the adapter boundary
- * in raw form — only the normalized LocalizationResult is returned.
- *
- * Cross-contract drift guards (items 3–4) enforce the Layer B invariant
- * that Agent 2 localizes existing targets; it must not redefine them.
+ * Validates bbox_1000 constraints (shape, range, non-inversion).
  */
 
-import { validateLocalizationResult } from '../../../core/localization-contract/validation';
-import type { LocalizationResult } from '../../../core/localization-contract/types';
-import type { SegmentationTarget } from '../../../core/segmentation-contract/types';
-import type { GeminiRawLocalizationOutput } from './types';
+import type { PreparedPageImage } from '../../../core/source-model/types';
+import type { WindowLocalizationResult, WindowLocalizationRegion } from './window-result';
+import type { GeminiRawWindowLocalizationOutput } from './types';
 
 // ---------------------------------------------------------------------------
 // Raw output validation
@@ -37,69 +27,55 @@ function isArray(v: unknown): v is unknown[] {
   return Array.isArray(v);
 }
 
-/**
- * Lightweight structural check of the raw Gemini JSON before normalization.
- * The full contract validation is done by validateLocalizationResult after
- * we attach run_id and target_id.
- */
-function assertRawShape(raw: unknown): asserts raw is GeminiRawLocalizationOutput {
+function assertRawShape(raw: unknown): asserts raw is GeminiRawWindowLocalizationOutput {
   if (!isObject(raw)) {
     throw new Error('Gemini localization response must be an object');
   }
-  if (!isArray((raw as Record<string, unknown>)['regions'])) {
-    throw new Error('Gemini localization response must have a regions array');
+  if (!isArray((raw as Record<string, unknown>)['targets'])) {
+    throw new Error('Gemini localization response must have a targets array');
   }
 }
 
 // ---------------------------------------------------------------------------
-// Cross-contract guard
+// bbox validation
 // ---------------------------------------------------------------------------
 
-/**
- * Verifies that Agent 2's regions match the Agent 1 segmentation target exactly:
- *   - Same region count.
- *   - Same page_number at each position (order preserved).
- *
- * Throws if Agent 2 attempted to reorder, add, or remove regions.
- *
- * This guard is the enforcement point for the Layer B invariant:
- * "Agent 2 must localize existing targets; it must NOT redefine target count
- * or reading order."
- */
-function assertRegionConsistency(
-  rawRegions: unknown[],
-  source: SegmentationTarget,
-): void {
-  if (rawRegions.length !== source.regions.length) {
+function validateBbox(
+  bbox: unknown,
+  entryIndex: number,
+): [number, number, number, number] {
+  if (!isArray(bbox) || bbox.length !== 4) {
     throw {
       code: 'LOCALIZATION_SCHEMA_INVALID',
-      message:
-        `target "${source.target_id}" region count drift: Agent 1 defined ` +
-        `${source.regions.length} region(s) but Agent 2 returned ${rawRegions.length}. ` +
-        'Agent 2 must not add, remove, or reorder regions.',
+      message: `targets[${entryIndex}].bbox_1000 must be an array of exactly 4 integers`,
     };
   }
 
-  for (let i = 0; i < rawRegions.length; i++) {
-    const rawRegion = rawRegions[i];
-    const expectedPageNumber = source.regions[i].page_number;
-
-    if (
-      !isObject(rawRegion) ||
-      (rawRegion as Record<string, unknown>)['page_number'] !== expectedPageNumber
-    ) {
-      const got = isObject(rawRegion)
-        ? (rawRegion as Record<string, unknown>)['page_number']
-        : '(non-object)';
+  const values = bbox as number[];
+  for (let i = 0; i < 4; i++) {
+    if (!Number.isInteger(values[i]) || values[i] < 0 || values[i] > 1000) {
       throw {
         code: 'LOCALIZATION_SCHEMA_INVALID',
-        message:
-          `target "${source.target_id}" regions[${i}].page_number drift: ` +
-          `expected ${expectedPageNumber} (from Agent 1) but Agent 2 returned ${got}. ` +
-          'Agent 2 must not change page_number order.',
+        message: `targets[${entryIndex}].bbox_1000[${i}] must be an integer in [0, 1000], got ${values[i]}`,
       };
     }
   }
+
+  const [yMin, xMin, yMax, xMax] = values;
+  if (yMin >= yMax) {
+    throw {
+      code: 'LOCALIZATION_SCHEMA_INVALID',
+      message: `targets[${entryIndex}].bbox_1000 y_min (${yMin}) must be less than y_max (${yMax})`,
+    };
+  }
+  if (xMin >= xMax) {
+    throw {
+      code: 'LOCALIZATION_SCHEMA_INVALID',
+      message: `targets[${entryIndex}].bbox_1000 x_min (${xMin}) must be less than x_max (${xMax})`,
+    };
+  }
+
+  return [yMin, xMin, yMax, xMax];
 }
 
 // ---------------------------------------------------------------------------
@@ -107,39 +83,70 @@ function assertRegionConsistency(
 // ---------------------------------------------------------------------------
 
 /**
- * Parses the raw Gemini structured JSON output and returns a normalized
- * LocalizationResult for a single target.
+ * Parses the raw Gemini window localization response.
  *
- * @param raw        The parsed JSON object from Gemini's response body.
- * @param runId      The run_id for the current orchestrator run.
- * @param source     The Agent 1 SegmentationTarget this localization is for.
- *                   Used to carry target_id and enforce region consistency.
- * @param maxRegionsPerTarget  Max regions per INV-3 (from active profile).
- * @returns          Validated, normalized LocalizationResult.
- * @throws           Error or LocalizationValidationError on invalid response.
+ * Maps image_position (1/2/3) → windowPages[position-1].page_number.
+ * This is deterministic and cannot fail (bounded to window size).
+ *
+ * @param raw          The parsed JSON from Gemini's response body.
+ * @param runId        The run_id for the current run.
+ * @param windowPages  The ordered PreparedPageImage[] sent in this window.
+ * @returns            Validated WindowLocalizationResult.
  */
-export function parseGeminiLocalizationResponse(
+export function parseWindowLocalizationResponse(
   raw: unknown,
   runId: string,
-  source: SegmentationTarget,
-  maxRegionsPerTarget: number = 2,
-): LocalizationResult {
+  windowPages: ReadonlyArray<PreparedPageImage>,
+): WindowLocalizationResult {
   assertRawShape(raw);
 
-  // Cross-validate region count and page_number order against Agent 1 output.
-  assertRegionConsistency(raw.regions as unknown[], source);
+  const regions: WindowLocalizationRegion[] = [];
 
-  // Build the normalized object with target_id carried from Agent 1.
-  const normalized: Record<string, unknown> = {
+  for (let i = 0; i < raw.targets.length; i++) {
+    const entry = raw.targets[i];
+
+    // Validate question_number
+    if (typeof entry.question_number !== 'string' || entry.question_number.trim() === '') {
+      throw {
+        code: 'LOCALIZATION_SCHEMA_INVALID',
+        message: `targets[${i}].question_number must be a non-empty string`,
+      };
+    }
+
+    // Validate and map image_position
+    const pos = typeof entry.image_position === 'string'
+      ? Number(entry.image_position)
+      : entry.image_position;
+    if (!Number.isInteger(pos) || pos < 1 || pos > windowPages.length) {
+      throw {
+        code: 'LOCALIZATION_SCHEMA_INVALID',
+        message:
+          `targets[${i}].image_position ${entry.image_position} is out of range — ` +
+          `expected 1..${windowPages.length}`,
+      };
+    }
+
+    // Deterministic mapping: image_position → page_number
+    const pageNumber = windowPages[pos - 1].page_number;
+
+    // Validate bbox
+    const bbox = validateBbox(entry.bbox_1000, i);
+
+    regions.push({
+      question_number: entry.question_number.trim(),
+      page_number: pageNumber,
+      bbox_1000: bbox,
+    });
+  }
+
+  const result: WindowLocalizationResult = {
     run_id: runId,
-    target_id: source.target_id,
-    regions: raw.regions,
+    regions,
   };
 
   if (typeof raw.review_comment === 'string') {
-    normalized['review_comment'] = raw.review_comment;
+    result.review_comment = raw.review_comment;
   }
 
-  // Run full contract validation (enforces bbox shape, range, inversion, INV-3).
-  return validateLocalizationResult(normalized, maxRegionsPerTarget);
+  return result;
 }

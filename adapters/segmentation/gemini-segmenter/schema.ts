@@ -3,9 +3,9 @@
  *
  * Gemini structured output response schema for Agent 1.
  *
- * This JSON schema is sent in generationConfig.responseSchema so that
- * Gemini returns a predictable JSON object that the parser can validate
- * against the normalized segmentation contract.
+ * Agent 1 produces a **question inventory** — an ordered list of questions
+ * found in the document. No spatial/region information is requested.
+ * Page-level localization is handled by Agent 3 via sliding windows.
  *
  * Note: target_id is intentionally absent — the parser assigns sequential
  * IDs in reading order after the response arrives.
@@ -34,10 +34,8 @@ function buildExtractionFieldsSchema(
 
 export function buildGeminiSegmentationSchema(input: {
   extractionFields?: ReadonlyArray<ExtractionFieldDefinition>;
-  maxRegionsPerTarget?: number;
 } = {}): Record<string, unknown> {
   const extractionFields = input.extractionFields ?? [];
-  const maxRegions = input.maxRegionsPerTarget ?? 10;
 
   const targetProperties: Record<string, unknown> = {
     target_type: {
@@ -66,31 +64,6 @@ export function buildGeminiSegmentationSchema(input: {
         type: 'string',
       },
     },
-    regions: {
-      type: 'array',
-      description:
-        'Ordered image references for this target. One entry per image the question appears on.',
-      minItems: 1,
-      maxItems: maxRegions,
-      items: {
-        type: 'object',
-        properties: {
-          image_index: {
-            type: 'integer',
-            description:
-              '1-based position in the provided images (Image 1 = first image, Image 2 = second, etc.).',
-            minimum: 1,
-          },
-        },
-        required: ['image_index'],
-      },
-    },
-    finish_image_index: {
-      type: 'integer',
-      description:
-        'The 1-based image position where this target\'s final visible content ends.',
-      minimum: 1,
-    },
     review_comment: {
       type: 'string',
       description:
@@ -99,7 +72,7 @@ export function buildGeminiSegmentationSchema(input: {
     },
   };
 
-  const targetRequired = ['target_type', 'regions', 'finish_image_index', 'question_number', 'question_text', 'sub_questions'];
+  const targetRequired = ['target_type', 'question_number', 'question_text', 'sub_questions'];
 
   if (extractionFields.length > 0) {
     targetProperties['extraction_fields'] = buildExtractionFieldsSchema(extractionFields);

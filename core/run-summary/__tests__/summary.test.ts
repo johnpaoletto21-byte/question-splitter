@@ -6,7 +6,7 @@
  * Proves:
  *   - review_comment flows into summary state (INV-4: visible in UI).
  *   - agent1_status is 'needs_review' when comment present, 'ok' otherwise.
- *   - page_numbers are extracted from regions[].
+ *   - page_numbers are empty when no localizedResults provided.
  *   - Target order from segmentation result is preserved.
  *   - run_id is carried through.
  */
@@ -21,12 +21,10 @@ function makeResult(overrides: Partial<SegmentationResult> = {}): SegmentationRe
       {
         target_id: 'q_0001',
         target_type: 'question',
-        regions: [{ page_number: 1 }],
       },
       {
         target_id: 'q_0002',
         target_type: 'question',
-        regions: [{ page_number: 2 }, { page_number: 3 }],
         review_comment: 'Boundary is ambiguous near footer',
       },
     ],
@@ -67,14 +65,14 @@ describe('buildRunSummaryFromSegmentation', () => {
     expect(summary.targets[1].review_comment).toBe('Boundary is ambiguous near footer');
   });
 
-  it('extracts page_numbers from regions for single-region target', () => {
+  it('page_numbers are empty when no localizedResults provided', () => {
     const summary = buildRunSummaryFromSegmentation(makeResult());
-    expect(summary.targets[0].page_numbers).toEqual([1]);
+    expect(summary.targets[0].page_numbers).toEqual([]);
   });
 
-  it('extracts page_numbers from regions for two-region target', () => {
+  it('page_numbers are empty for all targets without localizedResults', () => {
     const summary = buildRunSummaryFromSegmentation(makeResult());
-    expect(summary.targets[1].page_numbers).toEqual([2, 3]);
+    expect(summary.targets[1].page_numbers).toEqual([]);
   });
 
   it('carries target_id and target_type for each entry', () => {

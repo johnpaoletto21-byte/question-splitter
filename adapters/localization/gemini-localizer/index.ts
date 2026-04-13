@@ -1,11 +1,11 @@
 export {
-  localizeTarget,
+  localizeWindow,
   buildGeminiLocalizationRequest,
   encodePageImageAsBase64,
   unwrapGeminiLocalizationResponse,
-  selectPagesForTarget,
 } from './localizer';
-export { buildLocalizationPrompt } from './prompt';
-export { parseGeminiLocalizationResponse } from './parser';
+export { buildWindowLocalizationPrompt } from './prompt';
+export { parseWindowLocalizationResponse } from './parser';
 export { GEMINI_LOCALIZATION_SCHEMA } from './schema';
+export type { WindowLocalizationResult, WindowLocalizationRegion } from './window-result';
 export type { GeminiLocalizerConfig, HttpPostFn } from './types';

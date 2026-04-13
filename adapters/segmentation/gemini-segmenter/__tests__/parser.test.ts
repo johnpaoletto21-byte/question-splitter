@@ -5,9 +5,9 @@
  *
  * Proves:
  *   - Sequential target_id assignment in reading order.
- *   - Normalized output ordering preserved.
+ *   - question_number / question_text / sub_questions passthrough.
  *   - review_comment flows through (INV-4).
- *   - Bbox fields rejected (INV-2 / PO-2).
+ *   - extraction_fields passthrough.
  *   - Invalid raw response rejected with typed error.
  */
 
@@ -19,42 +19,45 @@ describe('parseGeminiSegmentationResponse', () => {
   it('parses a valid single-target response', () => {
     const raw = {
       targets: [
-        { target_type: 'question', regions: [{ page_number: 1 }] },
+        { target_type: 'question', question_number: '1', question_text: 'What is X?', sub_questions: [] },
       ],
     };
-    const result = parseGeminiSegmentationResponse(raw, RUN_ID, 2);
+    const result = parseGeminiSegmentationResponse(raw, RUN_ID);
     expect(result.run_id).toBe(RUN_ID);
     expect(result.targets).toHaveLength(1);
     expect(result.targets[0].target_id).toBe('q_0001');
     expect(result.targets[0].target_type).toBe('question');
-    expect(result.targets[0].regions).toEqual([{ page_number: 1 }]);
   });
 
   it('assigns sequential target_ids in reading order (q_0001, q_0002, q_0003)', () => {
     const raw = {
       targets: [
-        { target_type: 'question', regions: [{ page_number: 1 }] },
-        { target_type: 'question', regions: [{ page_number: 2 }] },
-        { target_type: 'question', regions: [{ page_number: 3 }] },
+        { target_type: 'question', question_number: '1', question_text: 'Q1', sub_questions: [] },
+        { target_type: 'question', question_number: '2', question_text: 'Q2', sub_questions: [] },
+        { target_type: 'question', question_number: '3', question_text: 'Q3', sub_questions: [] },
       ],
     };
-    const result = parseGeminiSegmentationResponse(raw, RUN_ID, 2);
+    const result = parseGeminiSegmentationResponse(raw, RUN_ID);
     expect(result.targets[0].target_id).toBe('q_0001');
     expect(result.targets[1].target_id).toBe('q_0002');
     expect(result.targets[2].target_id).toBe('q_0003');
   });
 
-  it('preserves reading order of targets exactly', () => {
+  it('passes through question_number, question_text, and sub_questions', () => {
     const raw = {
       targets: [
-        { target_type: 'question', regions: [{ page_number: 1 }] },
-        { target_type: 'question', regions: [{ page_number: 2 }, { page_number: 3 }] },
+        {
+          target_type: 'question',
+          question_number: '問3',
+          question_text: 'Solve for x in the following equation.',
+          sub_questions: ['(1)', '(2)', '(3)'],
+        },
       ],
     };
-    const result = parseGeminiSegmentationResponse(raw, RUN_ID, 2);
-    expect(result.targets[0].regions[0].page_number).toBe(1);
-    expect(result.targets[1].regions[0].page_number).toBe(2);
-    expect(result.targets[1].regions[1].page_number).toBe(3);
+    const result = parseGeminiSegmentationResponse(raw, RUN_ID);
+    expect(result.targets[0].question_number).toBe('問3');
+    expect(result.targets[0].question_text).toBe('Solve for x in the following equation.');
+    expect(result.targets[0].sub_questions).toEqual(['(1)', '(2)', '(3)']);
   });
 
   it('propagates review_comment when present (INV-4: visible in agent output)', () => {
@@ -62,90 +65,61 @@ describe('parseGeminiSegmentationResponse', () => {
       targets: [
         {
           target_type: 'question',
-          regions: [{ page_number: 1 }],
+          question_number: '1',
+          question_text: 'Q1',
+          sub_questions: [],
           review_comment: 'Boundary unclear near footer',
         },
       ],
     };
-    const result = parseGeminiSegmentationResponse(raw, RUN_ID, 2);
+    const result = parseGeminiSegmentationResponse(raw, RUN_ID);
     expect(result.targets[0].review_comment).toBe('Boundary unclear near footer');
   });
 
   it('does not include review_comment when absent', () => {
     const raw = {
-      targets: [{ target_type: 'question', regions: [{ page_number: 1 }] }],
+      targets: [{ target_type: 'question', question_number: '1', question_text: 'Q1', sub_questions: [] }],
     };
-    const result = parseGeminiSegmentationResponse(raw, RUN_ID, 2);
+    const result = parseGeminiSegmentationResponse(raw, RUN_ID);
     expect('review_comment' in result.targets[0]).toBe(false);
   });
 
   it('rejects non-object raw input', () => {
-    expect(() => parseGeminiSegmentationResponse(null, RUN_ID, 2)).toThrow();
-    expect(() => parseGeminiSegmentationResponse('string', RUN_ID, 2)).toThrow();
+    expect(() => parseGeminiSegmentationResponse(null, RUN_ID)).toThrow();
+    expect(() => parseGeminiSegmentationResponse('string', RUN_ID)).toThrow();
   });
 
   it('rejects raw input missing targets array', () => {
-    expect(() => parseGeminiSegmentationResponse({ other: 'field' }, RUN_ID, 2)).toThrow();
-  });
-
-  it('rejects a target with 3 regions when maxRegions=2 (INV-3)', () => {
-    const raw = {
-      targets: [
-        {
-          target_type: 'question',
-          regions: [{ page_number: 1 }, { page_number: 2 }, { page_number: 3 }],
-        },
-      ],
-    };
-    expect(() => parseGeminiSegmentationResponse(raw, RUN_ID, 2)).toThrow(
-      expect.objectContaining({ code: 'SEGMENTATION_SCHEMA_INVALID' }),
-    );
-  });
-
-  it('rejects a region with bbox_1000 (INV-2 / PO-2 guard)', () => {
-    const raw = {
-      targets: [
-        {
-          target_type: 'question',
-          regions: [{ page_number: 1, bbox_1000: [0, 0, 500, 500] }],
-        },
-      ],
-    };
-    expect(() => parseGeminiSegmentationResponse(raw, RUN_ID, 2)).toThrow(
-      expect.objectContaining({
-        code: 'SEGMENTATION_SCHEMA_INVALID',
-        message: expect.stringContaining('bbox_1000'),
-      }),
-    );
+    expect(() => parseGeminiSegmentationResponse({ other: 'field' }, RUN_ID)).toThrow();
   });
 
   it('pads target_id to 4 digits (q_0001 not q_1)', () => {
     const raw = {
-      targets: [{ target_type: 'question', regions: [{ page_number: 1 }] }],
+      targets: [{ target_type: 'question', question_number: '1', question_text: 'Q1', sub_questions: [] }],
     };
-    const result = parseGeminiSegmentationResponse(raw, RUN_ID, 2);
+    const result = parseGeminiSegmentationResponse(raw, RUN_ID);
     expect(result.targets[0].target_id).toMatch(/^q_\d{4}$/);
   });
 
   it('uses the provided run_id in the result', () => {
-    const raw = { targets: [{ target_type: 'question', regions: [{ page_number: 1 }] }] };
+    const raw = { targets: [{ target_type: 'question', question_number: '1', question_text: 'Q1', sub_questions: [] }] };
     const customRunId = 'run_2024-12-01_custom99';
-    const result = parseGeminiSegmentationResponse(raw, customRunId, 2);
+    const result = parseGeminiSegmentationResponse(raw, customRunId);
     expect(result.run_id).toBe(customRunId);
   });
 
-  it('validates focus page and extraction fields when options are provided', () => {
+  it('validates extraction fields when options are provided', () => {
     const raw = {
       targets: [{
         target_type: 'question',
-        finish_page_number: 2,
-        regions: [{ page_number: 2 }],
+        question_number: '1',
+        question_text: 'Q1',
+        sub_questions: [],
         extraction_fields: { has_diagram: false },
       }],
     };
 
-    const result = parseGeminiSegmentationResponse(raw, RUN_ID, 2, {
-      focusPageNumber: 2,
+    const result = parseGeminiSegmentationResponse(raw, RUN_ID, {
       extractionFields: [{
         key: 'has_diagram',
         label: 'Has Diagram',
@@ -154,150 +128,11 @@ describe('parseGeminiSegmentationResponse', () => {
       }],
     });
 
-    expect(result.targets[0].finish_page_number).toBe(2);
     expect(result.targets[0].extraction_fields).toEqual({ has_diagram: false });
   });
 
-  it('silently drops targets whose regions do not reach the focus page', () => {
-    const raw = {
-      targets: [{
-        target_type: 'question',
-        finish_page_number: 3,
-        regions: [{ page_number: 3 }],
-      }],
-    };
-
-    const result = parseGeminiSegmentationResponse(raw, RUN_ID, 2, {
-      focusPageNumber: 2,
-    });
+  it('accepts an empty target list', () => {
+    const result = parseGeminiSegmentationResponse({ targets: [] }, RUN_ID);
     expect(result.targets).toEqual([]);
-  });
-
-  it('silently drops focus-page targets whose regions are only on other pages', () => {
-    const raw = {
-      targets: [{
-        target_type: 'question',
-        finish_page_number: 5,
-        regions: [{ page_number: 1 }],
-      }],
-    };
-
-    const result = parseGeminiSegmentationResponse(raw, RUN_ID, 2, {
-      focusPageNumber: 5,
-    });
-    expect(result.targets).toEqual([]);
-  });
-
-  it('accepts an empty target list for a focus window', () => {
-    const result = parseGeminiSegmentationResponse({ targets: [] }, RUN_ID, 2, {
-      focusPageNumber: 2,
-    });
-
-    expect(result.targets).toEqual([]);
-  });
-
-  it('accepts a valid two-page target ending on the focus page', () => {
-    const raw = {
-      targets: [{
-        target_type: 'question',
-        finish_page_number: 5,
-        regions: [{ page_number: 4 }, { page_number: 5 }],
-      }],
-    };
-
-    const result = parseGeminiSegmentationResponse(raw, RUN_ID, 2, {
-      focusPageNumber: 5,
-    });
-
-    expect(result.targets[0].regions.map((region) => region.page_number)).toEqual([4, 5]);
-  });
-
-  it('drops targets whose all regions are on blank-classified pages', () => {
-    const raw = {
-      page_classifications: [
-        { page_number: 3, classification: 'blank' },
-        { page_number: 4, classification: 'question_content' },
-      ],
-      targets: [
-        { target_type: 'question', regions: [{ page_number: 3 }] },
-        { target_type: 'question', regions: [{ page_number: 4 }] },
-      ],
-    };
-    const result = parseGeminiSegmentationResponse(raw, RUN_ID, 2);
-    expect(result.targets).toHaveLength(1);
-    expect(result.targets[0].target_id).toBe('q_0001');
-    expect(result.targets[0].regions[0].page_number).toBe(4);
-  });
-
-  it('keeps targets with at least one region on a content page', () => {
-    const raw = {
-      page_classifications: [
-        { page_number: 5, classification: 'blank' },
-        { page_number: 6, classification: 'question_content' },
-      ],
-      targets: [
-        { target_type: 'question', regions: [{ page_number: 5 }, { page_number: 6 }] },
-      ],
-    };
-    const result = parseGeminiSegmentationResponse(raw, RUN_ID, 2);
-    expect(result.targets).toHaveLength(1);
-    expect(result.targets[0].regions).toHaveLength(2);
-  });
-
-  it('drops targets on cover and answer_sheet classified pages', () => {
-    const raw = {
-      page_classifications: [
-        { page_number: 1, classification: 'cover' },
-        { page_number: 12, classification: 'answer_sheet' },
-        { page_number: 4, classification: 'question_content' },
-      ],
-      targets: [
-        { target_type: 'question', regions: [{ page_number: 1 }] },
-        { target_type: 'question', regions: [{ page_number: 12 }] },
-        { target_type: 'question', regions: [{ page_number: 4 }] },
-      ],
-    };
-    const result = parseGeminiSegmentationResponse(raw, RUN_ID, 2);
-    expect(result.targets).toHaveLength(1);
-    expect(result.targets[0].regions[0].page_number).toBe(4);
-  });
-
-  it('skips classification filtering when page_classifications is absent', () => {
-    const raw = {
-      targets: [
-        { target_type: 'question', regions: [{ page_number: 3 }] },
-      ],
-    };
-    const result = parseGeminiSegmentationResponse(raw, RUN_ID, 2);
-    expect(result.targets).toHaveLength(1);
-  });
-
-  it('keeps targets on figure_only classified pages', () => {
-    const raw = {
-      page_classifications: [
-        { page_number: 7, classification: 'figure_only' },
-      ],
-      targets: [
-        { target_type: 'question', regions: [{ page_number: 7 }] },
-      ],
-    };
-    const result = parseGeminiSegmentationResponse(raw, RUN_ID, 2);
-    expect(result.targets).toHaveLength(1);
-  });
-
-  it('handles string page numbers in page_classifications', () => {
-    const raw = {
-      page_classifications: [
-        { page_number: '3', classification: 'blank' },
-        { page_number: '4', classification: 'question_content' },
-      ],
-      targets: [
-        { target_type: 'question', regions: [{ page_number: 3 }] },
-        { target_type: 'question', regions: [{ page_number: 4 }] },
-      ],
-    };
-    const result = parseGeminiSegmentationResponse(raw, RUN_ID, 2);
-    expect(result.targets).toHaveLength(1);
-    expect(result.targets[0].regions[0].page_number).toBe(4);
   });
 });

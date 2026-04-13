@@ -39,12 +39,10 @@ function makeSegResult(): SegmentationResult {
       {
         target_id: 'q_0001',
         target_type: 'question',
-        regions: [{ page_number: 1 }],
       },
       {
         target_id: 'q_0002',
         target_type: 'question',
-        regions: [{ page_number: 2 }, { page_number: 3 }],
         review_comment: 'Agent 1: boundary ambiguous',
       },
     ],
@@ -106,7 +104,6 @@ function makeReviewSummary() {
       target_id: 'q_0001',
       target_type: 'question',
       page_numbers: [1],
-      finish_page_number: 1,
       extraction_fields: { has_diagram: true },
       agent1_status: 'needs_review' as const,
       review_comment: 'Agent 1: diagram boundary uncertain',
@@ -329,7 +326,6 @@ describe('renderSummaryHtml — HTML escaping', () => {
         {
           target_id: '<script>alert(1)</script>',
           target_type: 'question',
-          regions: [{ page_number: 1 }],
         },
       ],
     };
@@ -348,7 +344,6 @@ describe('renderSummaryHtml — HTML escaping', () => {
         {
           target_id: 'q_0001',
           target_type: 'question',
-          regions: [{ page_number: 1 }],
           review_comment: '<b>bold</b> & "quoted"',
         },
       ],
@@ -382,11 +377,11 @@ describe('renderSummaryHtml — split-view layout', () => {
     expect(html).toContain('type="application/pdf"');
   });
 
-  it('renders target cards with data-pages attributes', () => {
+  it('renders target cards with data-pages attributes (empty when no localization)', () => {
     const state = buildRunSummaryFromSegmentation(makeSegResult());
     const html = renderSummaryHtml(state, { sourcePdfUrl: '/runs/test/source-pdf' });
-    expect(html).toContain('data-pages="1"');
-    expect(html).toContain('data-pages="2,3"');
+    // page_numbers come from localization, not segmentation — empty until localized
+    expect(html).toContain('data-pages=""');
   });
 
   it('renders target cards with status badges', () => {

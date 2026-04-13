@@ -20,14 +20,15 @@ describe('renderRunDebugMarkdown', () => {
         agent1Prompt: 'Saved segmenter prompt',
         reviewerPrompt: 'Saved reviewer prompt',
         agent2Prompt: 'Saved localizer prompt',
+        deduplicatorPrompt: 'Saved deduplicator prompt',
         capturedAt: '2024-01-01T00:00:00.000Z',
       },
       error: 'Gemini failed',
       failureContext: {
-        segmentationWindow: {
-          focusPageNumber: 5,
-          pageNumbers: [4, 5, 6],
-          allowedRegionPageNumbers: [4, 5],
+        chunk: {
+          chunkIndex: 0,
+          startPage: 4,
+          endPage: 6,
         },
       },
     };
@@ -46,8 +47,8 @@ describe('renderRunDebugMarkdown', () => {
     expect(markdown).toContain('Saved segmenter prompt');
     expect(markdown).toContain('Saved localizer prompt');
     expect(markdown).toContain('has_diagram');
-    expect(markdown).toContain('focusPageNumber');
-    expect(markdown).toContain('allowedRegionPageNumbers');
+    expect(markdown).toContain('chunkIndex');
+    expect(markdown).toContain('startPage');
     expect(markdown).toContain('model error');
     expect(markdown).toContain('[REDACTED]');
     expect(markdown).not.toContain('secret-key');

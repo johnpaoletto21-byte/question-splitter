@@ -7,7 +7,6 @@
  * Proves:
  *   - reviewSegmentation returns null for "pass" verdict.
  *   - reviewSegmentation returns corrected SegmentationResult for "corrected" verdict.
- *   - Repair retry loop works for schema errors.
  *   - Sends all pages (no windowing).
  *   - API errors propagate.
  */
@@ -42,8 +41,9 @@ const SEGMENTATION: SegmentationResult = {
     {
       target_id: 'q_0001',
       target_type: 'question',
-      finish_page_number: 1,
-      regions: [{ page_number: 1 }],
+      question_number: '1',
+      question_text: 'What is X?',
+      sub_questions: [],
     },
   ],
 };
@@ -87,13 +87,15 @@ describe('reviewSegmentation', () => {
       targets: [
         {
           target_type: 'question',
-          finish_page_number: 1,
-          regions: [{ page_number: 1 }],
+          question_number: '1',
+          question_text: 'What is X?',
+          sub_questions: [],
         },
         {
           target_type: 'question',
-          finish_page_number: 2,
-          regions: [{ page_number: 2 }],
+          question_number: '2',
+          question_text: 'Explain Y.',
+          sub_questions: ['(a)', '(b)'],
         },
       ],
     }));
@@ -150,65 +152,6 @@ describe('reviewSegmentation', () => {
     expect(url).toContain('gemini-1.5-pro');
   });
 
-  it('repairs a schema error and returns corrected output on retry', async () => {
-    // First call: "corrected" but regions have bbox_1000 → validation fails
-    mockHttpPost
-      .mockResolvedValueOnce(makeGeminiEnvelope({
-        verdict: 'corrected',
-        targets: [{
-          target_type: 'question',
-          finish_page_number: 1,
-          regions: [{ page_number: 1, bbox_1000: [0, 0, 500, 500] }],
-        }],
-      }))
-      // Second call: valid corrected response
-      .mockResolvedValueOnce(makeGeminiEnvelope({
-        verdict: 'corrected',
-        targets: [{
-          target_type: 'question',
-          finish_page_number: 1,
-          regions: [{ page_number: 1 }],
-        }],
-      }));
-
-    const result = await reviewSegmentation(
-      RUN_ID, SEGMENTATION, [makePage(1)], PROFILE, '', CONFIG,
-      mockHttpPost, mockEncodeFn,
-    );
-
-    expect(mockHttpPost).toHaveBeenCalledTimes(2);
-    expect(result).not.toBeNull();
-    expect(result!.targets[0].regions).toEqual([{ page_number: 1 }]);
-
-    // Verify the retry prompt mentions correction
-    const retryBody = mockHttpPost.mock.calls[1][1] as Record<string, unknown>;
-    const contents = retryBody['contents'] as Record<string, unknown>[];
-    const retryPrompt = ((contents[0]['parts'] as Record<string, unknown>[])[0]['text']) as string;
-    expect(retryPrompt).toContain('Correction Required');
-  });
-
-  it('throws after exhausting repair retries', async () => {
-    mockHttpPost.mockResolvedValue(makeGeminiEnvelope({
-      verdict: 'corrected',
-      targets: [{
-        target_type: 'question',
-        finish_page_number: 1,
-        regions: [{ page_number: 1, bbox_1000: [0, 0, 500, 500] }],
-      }],
-    }));
-
-    await expect(reviewSegmentation(
-      RUN_ID, SEGMENTATION, [makePage(1)], PROFILE, '', CONFIG,
-      mockHttpPost, mockEncodeFn,
-      { maxRepairRetries: 1 },
-    )).rejects.toMatchObject({
-      code: 'SEGMENTATION_SCHEMA_INVALID',
-      message: expect.stringContaining('after 1 retries'),
-    });
-
-    expect(mockHttpPost).toHaveBeenCalledTimes(2); // initial + 1 retry
-  });
-
   it('surfaces httpPost errors', async () => {
     mockHttpPost.mockRejectedValueOnce(new Error('Network timeout'));
 
@@ -227,7 +170,6 @@ describe('reviewSegmentation', () => {
       mockHttpPost, mockEncodeFn,
     )).rejects.toThrow('must be an object');
 
-    // Should NOT retry for non-schema errors
     expect(mockHttpPost).toHaveBeenCalledTimes(1);
   });
 });

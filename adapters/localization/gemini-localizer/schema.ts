@@ -3,31 +3,41 @@
  *
  * Gemini structured output response schema for Agent 3 (Region Localizer).
  *
+ * Agent 3 receives a sliding window of 1-3 images and returns bounding boxes
+ * for each question visible in the window.
+ *
  * bbox_1000 is an array of exactly 4 integers [y_min, x_min, y_max, x_max]
  * on a 0–1000 normalized scale. The schema enforces the 4-element shape
  * at the API level; strict validation (inversion, range) is done in the parser.
  */
 
-/** Build the JSON schema, allowing configurable maxItems for regions. */
-export function buildGeminiLocalizationSchema(maxRegions: number = 10): Record<string, unknown> {
+/** Build the JSON schema for window-based localization. */
+export function buildGeminiLocalizationSchema(windowSize: number = 3): Record<string, unknown> {
   return {
     type: 'object',
     properties: {
-      regions: {
+      targets: {
         type: 'array',
         description:
-          'Ordered bounding box entries for each page region of this target. ' +
-          'Must have the same count and page order as provided in the prompt.',
-        minItems: 1,
-        maxItems: maxRegions,
+          'List of question bounding boxes found in the provided images. ' +
+          'One entry per question per image. A question spanning two images has two entries. ' +
+          'Empty array if no questions appear in these images.',
         items: {
           type: 'object',
           properties: {
-            page_number: {
+            question_number: {
+              type: 'string',
+              description:
+                'The question number from the provided question list (e.g. "1", "2", "問3"). ' +
+                'Must match exactly one entry in the question list.',
+            },
+            image_position: {
               type: 'integer',
               description:
-                '1-based page number for this region (must match the page number given in the prompt).',
+                `Which image this bounding box is on (1 = first image, 2 = second, 3 = third). ` +
+                `Value must be between 1 and ${windowSize}.`,
               minimum: 1,
+              maximum: windowSize,
             },
             bbox_1000: {
               type: 'array',
@@ -45,19 +55,18 @@ export function buildGeminiLocalizationSchema(maxRegions: number = 10): Record<s
               },
             },
           },
-          required: ['page_number', 'bbox_1000'],
+          required: ['question_number', 'image_position', 'bbox_1000'],
         },
       },
       review_comment: {
         type: 'string',
         description:
-          'Optional note when localization is uncertain, the target is partially off-page, ' +
-          'or bbox confidence is low. Flag any region that may need manual review.',
+          'Optional note when localization is uncertain or bbox confidence is low.',
       },
     },
-    required: ['regions'],
+    required: ['targets'],
   };
 }
 
-/** JSON schema object for Gemini's responseSchema field (Agent 3). */
-export const GEMINI_LOCALIZATION_SCHEMA = buildGeminiLocalizationSchema();
+/** Default JSON schema for Gemini's responseSchema field (Agent 3, 3-image window). */
+export const GEMINI_LOCALIZATION_SCHEMA = buildGeminiLocalizationSchema(3);

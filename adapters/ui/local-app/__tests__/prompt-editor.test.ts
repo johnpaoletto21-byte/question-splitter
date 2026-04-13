@@ -27,6 +27,7 @@ function makeState(overrides: Partial<PromptConfigState> = {}): PromptConfigStat
     agent1Prompt: '',
     reviewerPrompt: '',
     agent2Prompt: '',
+    deduplicatorPrompt: '',
     ...overrides,
   };
 }
@@ -116,8 +117,8 @@ describe('renderPromptEditorHtml — renders current prompt values', () => {
       agent2Prompt: DEFAULT_AGENT2_PROMPT,
     }));
     expect(html).toContain('You are Agent 1');
-    expect(html).toContain('You are Agent 1.5');
     expect(html).toContain('You are Agent 2');
+    expect(html).toContain('You are Agent 3');
   });
 
   it('renders agent1Prompt value in the textarea', () => {

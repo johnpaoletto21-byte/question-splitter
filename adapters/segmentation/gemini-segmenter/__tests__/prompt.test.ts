@@ -30,23 +30,10 @@ describe('buildSegmentationPrompt', () => {
     expect(prompt).toContain('question');
   });
 
-  it('includes max_regions_per_target from profile', () => {
-    const prompt = buildSegmentationPrompt([makePage(1)], PROFILE, '');
+  it('includes number of page images provided', () => {
+    const pages = [makePage(1), makePage(2)];
+    const prompt = buildSegmentationPrompt(pages, PROFILE, '');
     expect(prompt).toContain('2');
-  });
-
-  it('lists page numbers in the prompt', () => {
-    const pages = [makePage(1), makePage(2), makePage(3)];
-    const prompt = buildSegmentationPrompt(pages, PROFILE, '');
-    expect(prompt).toContain('Page 1');
-    expect(prompt).toContain('Page 2');
-    expect(prompt).toContain('Page 3');
-  });
-
-  it('includes source_id for each page', () => {
-    const pages = [makePage(1, 'src_0001_paper'), makePage(2, 'src_0001_paper')];
-    const prompt = buildSegmentationPrompt(pages, PROFILE, '');
-    expect(prompt).toContain('src_0001_paper');
   });
 
   it('uses promptSnapshot as the editable instruction block when non-empty', () => {
@@ -54,7 +41,6 @@ describe('buildSegmentationPrompt', () => {
     const prompt = buildSegmentationPrompt([makePage(1)], PROFILE, snapshot);
     expect(prompt).toContain(snapshot);
     expect(prompt).toContain('## Run Context');
-    expect(prompt).toContain('Page 1');
   });
 
   it('ignores whitespace-only promptSnapshot and uses built-in prompt', () => {
@@ -69,18 +55,20 @@ describe('buildSegmentationPrompt', () => {
     expect(prompt).not.toContain('pixel');
   });
 
-  it('includes focus page instructions when provided', () => {
+  it('does not mention regions or image indices', () => {
+    const prompt = buildSegmentationPrompt([makePage(1), makePage(2)], PROFILE, '');
+    expect(prompt).not.toContain('image_index');
+    expect(prompt).not.toContain('finish_image_index');
+  });
+
+  it('includes chunk context when chunkStartPage and chunkEndPage are provided', () => {
     const prompt = buildSegmentationPrompt(
-      [makePage(1), makePage(2), makePage(3)],
+      [makePage(4), makePage(5), makePage(6)],
       PROFILE,
       '',
-      { focusPageNumber: 2, allowedRegionPageNumbers: [1, 2] },
+      { chunkStartPage: 4, chunkEndPage: 6 },
     );
-    expect(prompt).toContain('Focus page: 2');
-    expect(prompt).toContain('finish_page_number');
-    expect(prompt).toContain('Allowed output region page_numbers: 1, 2');
-    expect(prompt).toContain('image order is not page number');
-    expect(prompt).toContain('return an empty targets array');
+    expect(prompt).toContain('pages 4 to 6');
   });
 
   it('includes custom extraction field keys and descriptions', () => {

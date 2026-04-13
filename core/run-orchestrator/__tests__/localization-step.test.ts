@@ -1,41 +1,32 @@
 /**
  * core/run-orchestrator/__tests__/localization-step.test.ts
  *
- * Unit tests for the runLocalizationStep orchestrator step.
+ * Unit tests for assembleLocalizationResults.
  *
  * Proves:
- *   - All targets from SegmentationResult are processed in reading order.
- *   - Results are returned in the same order as the targets array.
- *   - The injected Localizer is called once per target with the correct args.
- *   - Errors from the localizer propagate to the caller.
- *   - The Localizer type is defined in core (no SDK import needed here).
+ *   - Basic assembly: window regions are grouped by question_number and
+ *     matched to segmentation targets to produce LocalizationResult[].
+ *   - Centrality-based dedup: when the same page appears in overlapping
+ *     windows, the bbox from the more central window is kept.
+ *   - Questions not found in any window are omitted from results.
+ *   - Regions are sorted by page_number ascending.
+ *   - target_id comes from the matched SegmentationTarget.
  */
 
-import { runLocalizationStep } from '../localization-step';
-import type { Localizer } from '../localization-step';
-import type { SegmentationResult } from '../../segmentation-contract/types';
+import { assembleLocalizationResults } from '../localization-step';
+import type { WindowLocalizationResult } from '../localization-step';
+import type { SegmentationTarget } from '../../segmentation-contract/types';
 import type { PreparedPageImage } from '../../source-model/types';
-import type { CropTargetProfile } from '../../crop-target-profile/types';
-import type { LocalizationResult } from '../../localization-contract/types';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-const PROFILE: CropTargetProfile = {
-  target_type: 'question',
-  max_regions_per_target: 2,
-  composition_mode: 'top_to_bottom',
-};
-
-function makeSegResult(targetCount: number = 2): SegmentationResult {
+function makeQuestion(qn: string, targetId?: string): SegmentationTarget {
   return {
-    run_id: 'run_test_001',
-    targets: Array.from({ length: targetCount }, (_, i) => ({
-      target_id: `q_${String(i + 1).padStart(4, '0')}`,
-      target_type: 'question',
-      regions: [{ page_number: i + 1 }],
-    })),
+    target_id: targetId ?? `q_${qn.padStart(4, '0')}`,
+    target_type: 'question',
+    question_number: qn,
   };
 }
 
@@ -49,123 +40,243 @@ function makePage(pageNumber: number): PreparedPageImage {
   };
 }
 
-function makeLocResult(targetId: string, pageNumber: number): LocalizationResult {
+function makeWindowResult(
+  regions: Array<{ question_number: string; page_number: number; bbox_1000: [number, number, number, number] }>,
+): WindowLocalizationResult {
   return {
-    run_id: 'run_test_001',
-    target_id: targetId,
-    regions: [{ page_number: pageNumber, bbox_1000: [100, 50, 800, 950] }],
+    run_id: 'run_test',
+    regions,
   };
 }
 
 // ---------------------------------------------------------------------------
-// Tests
+// Basic assembly
 // ---------------------------------------------------------------------------
 
-describe('runLocalizationStep', () => {
-  it('processes all targets from the segmentation result', async () => {
-    const segResult = makeSegResult(3);
-    const pages = [makePage(1), makePage(2), makePage(3)];
-    const callLog: string[] = [];
+describe('assembleLocalizationResults — basic assembly', () => {
+  it('groups regions by question_number and produces one LocalizationResult per target', () => {
+    const questions = [makeQuestion('1'), makeQuestion('2')];
+    const windowResults = [
+      makeWindowResult([
+        { question_number: '1', page_number: 1, bbox_1000: [0, 0, 500, 1000] },
+        { question_number: '2', page_number: 1, bbox_1000: [500, 0, 1000, 1000] },
+      ]),
+    ];
+    const windows = [{ pages: [makePage(1), makePage(2), makePage(3)] }];
 
-    const localizer: Localizer = async (_runId, target) => {
-      callLog.push(target.target_id);
-      return makeLocResult(target.target_id, target.regions[0].page_number);
-    };
+    const results = assembleLocalizationResults('run_test', questions, windowResults, windows);
 
-    const results = await runLocalizationStep(
-      'run_test_001',
-      segResult,
-      pages,
-      PROFILE,
-      '',
-      localizer,
-    );
-
-    expect(results).toHaveLength(3);
-    expect(callLog).toEqual(['q_0001', 'q_0002', 'q_0003']);
-  });
-
-  it('returns results in the same reading order as segmentation targets', async () => {
-    const segResult = makeSegResult(2);
-    const pages = [makePage(1), makePage(2)];
-
-    const localizer: Localizer = async (_runId, target) =>
-      makeLocResult(target.target_id, target.regions[0].page_number);
-
-    const results = await runLocalizationStep(
-      'run_test_001',
-      segResult,
-      pages,
-      PROFILE,
-      '',
-      localizer,
-    );
-
+    expect(results).toHaveLength(2);
     expect(results[0].target_id).toBe('q_0001');
+    expect(results[0].regions).toHaveLength(1);
+    expect(results[0].regions[0].page_number).toBe(1);
     expect(results[1].target_id).toBe('q_0002');
   });
 
-  it('calls the localizer with the correct run_id, target, pages, and profile', async () => {
-    const segResult = makeSegResult(1);
-    const pages = [makePage(1)];
-    let capturedRunId = '';
-    let capturedTargetId = '';
-    let capturedProfile: CropTargetProfile | undefined;
+  it('collects regions from multiple windows for the same question', () => {
+    const questions = [makeQuestion('1')];
+    const windowResults = [
+      makeWindowResult([
+        { question_number: '1', page_number: 1, bbox_1000: [0, 0, 1000, 1000] },
+      ]),
+      makeWindowResult([
+        { question_number: '1', page_number: 2, bbox_1000: [0, 0, 500, 1000] },
+      ]),
+    ];
+    const windows = [
+      { pages: [makePage(1), makePage(2), makePage(3)] },
+      { pages: [makePage(2), makePage(3), makePage(4)] },
+    ];
 
-    const localizer: Localizer = async (runId, target, _pages, profile) => {
-      capturedRunId = runId;
-      capturedTargetId = target.target_id;
-      capturedProfile = profile;
-      return makeLocResult(target.target_id, target.regions[0].page_number);
-    };
+    const results = assembleLocalizationResults('run_test', questions, windowResults, windows);
 
-    await runLocalizationStep('run_test_001', segResult, pages, PROFILE, '', localizer);
-
-    expect(capturedRunId).toBe('run_test_001');
-    expect(capturedTargetId).toBe('q_0001');
-    expect(capturedProfile).toEqual(PROFILE);
+    expect(results).toHaveLength(1);
+    expect(results[0].regions).toHaveLength(2);
+    expect(results[0].regions[0].page_number).toBe(1);
+    expect(results[0].regions[1].page_number).toBe(2);
   });
 
-  it('passes promptSnapshot to the localizer', async () => {
-    const segResult = makeSegResult(1);
-    let capturedSnapshot = '';
+  it('sorts regions by page_number ascending', () => {
+    const questions = [makeQuestion('1')];
+    const windowResults = [
+      makeWindowResult([
+        { question_number: '1', page_number: 3, bbox_1000: [0, 0, 500, 500] },
+        { question_number: '1', page_number: 1, bbox_1000: [0, 0, 500, 500] },
+      ]),
+    ];
+    const windows = [{ pages: [makePage(1), makePage(2), makePage(3)] }];
 
-    const localizer: Localizer = async (_runId, target, _pages, _profile, promptSnapshot) => {
-      capturedSnapshot = promptSnapshot;
-      return makeLocResult(target.target_id, target.regions[0].page_number);
-    };
+    const results = assembleLocalizationResults('run_test', questions, windowResults, windows);
 
-    await runLocalizationStep(
-      'run_test_001',
-      segResult,
-      [makePage(1)],
-      PROFILE,
-      'custom-snapshot',
-      localizer,
-    );
-
-    expect(capturedSnapshot).toBe('custom-snapshot');
+    expect(results[0].regions[0].page_number).toBe(1);
+    expect(results[0].regions[1].page_number).toBe(3);
   });
 
-  it('returns an empty array when segmentation result has no targets', async () => {
-    const segResult: SegmentationResult = { run_id: 'run_empty', targets: [] };
-    const localizer: Localizer = jest.fn();
+  it('uses target_id from the matched SegmentationTarget', () => {
+    const questions = [makeQuestion('1', 'custom_target_id')];
+    const windowResults = [
+      makeWindowResult([
+        { question_number: '1', page_number: 1, bbox_1000: [0, 0, 500, 500] },
+      ]),
+    ];
+    const windows = [{ pages: [makePage(1)] }];
 
-    const results = await runLocalizationStep('run_empty', segResult, [], PROFILE, '', localizer);
+    const results = assembleLocalizationResults('run_test', questions, windowResults, windows);
+
+    expect(results[0].target_id).toBe('custom_target_id');
+  });
+
+  it('uses the provided run_id', () => {
+    const questions = [makeQuestion('1')];
+    const windowResults = [
+      makeWindowResult([
+        { question_number: '1', page_number: 1, bbox_1000: [0, 0, 500, 500] },
+      ]),
+    ];
+    const windows = [{ pages: [makePage(1)] }];
+
+    const results = assembleLocalizationResults('run_custom', questions, windowResults, windows);
+
+    expect(results[0].run_id).toBe('run_custom');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Centrality-based dedup
+// ---------------------------------------------------------------------------
+
+describe('assembleLocalizationResults — centrality-based dedup', () => {
+  it('keeps the bbox from the window where the page is most central', () => {
+    const questions = [makeQuestion('1')];
+    // Page 2 appears in both windows:
+    //   Window 0: pages [1,2,3] → page 2 is at index 1 (middle), centrality = 1
+    //   Window 1: pages [2,3,4] → page 2 is at index 0 (edge), centrality = 0
+    const windowResults = [
+      makeWindowResult([
+        { question_number: '1', page_number: 2, bbox_1000: [100, 100, 900, 900] }, // from central position
+      ]),
+      makeWindowResult([
+        { question_number: '1', page_number: 2, bbox_1000: [200, 200, 800, 800] }, // from edge position
+      ]),
+    ];
+    const windows = [
+      { pages: [makePage(1), makePage(2), makePage(3)] },
+      { pages: [makePage(2), makePage(3), makePage(4)] },
+    ];
+
+    const results = assembleLocalizationResults('run_test', questions, windowResults, windows);
+
+    expect(results[0].regions).toHaveLength(1);
+    // Should keep bbox from window 0 (centrality 1 > centrality 0)
+    expect(results[0].regions[0].bbox_1000).toEqual([100, 100, 900, 900]);
+  });
+
+  it('keeps edge bbox when no more central window exists', () => {
+    const questions = [makeQuestion('1')];
+    // Page 1 only appears in window 0 at position 0 (edge)
+    const windowResults = [
+      makeWindowResult([
+        { question_number: '1', page_number: 1, bbox_1000: [50, 50, 950, 950] },
+      ]),
+    ];
+    const windows = [
+      { pages: [makePage(1), makePage(2), makePage(3)] },
+    ];
+
+    const results = assembleLocalizationResults('run_test', questions, windowResults, windows);
+
+    expect(results[0].regions[0].bbox_1000).toEqual([50, 50, 950, 950]);
+  });
+
+  it('deduplicates across three overlapping windows correctly', () => {
+    const questions = [makeQuestion('1')];
+    // Page 3 appears in all three windows:
+    //   Window 0: pages [1,2,3] → index 2 (edge), centrality = 0
+    //   Window 1: pages [2,3,4] → index 1 (middle), centrality = 1
+    //   Window 2: pages [3,4,5] → index 0 (edge), centrality = 0
+    const windowResults = [
+      makeWindowResult([
+        { question_number: '1', page_number: 3, bbox_1000: [0, 0, 300, 300] },
+      ]),
+      makeWindowResult([
+        { question_number: '1', page_number: 3, bbox_1000: [0, 0, 500, 500] }, // most central
+      ]),
+      makeWindowResult([
+        { question_number: '1', page_number: 3, bbox_1000: [0, 0, 700, 700] },
+      ]),
+    ];
+    const windows = [
+      { pages: [makePage(1), makePage(2), makePage(3)] },
+      { pages: [makePage(2), makePage(3), makePage(4)] },
+      { pages: [makePage(3), makePage(4), makePage(5)] },
+    ];
+
+    const results = assembleLocalizationResults('run_test', questions, windowResults, windows);
+
+    expect(results[0].regions).toHaveLength(1);
+    expect(results[0].regions[0].bbox_1000).toEqual([0, 0, 500, 500]); // from window 1
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Questions not found
+// ---------------------------------------------------------------------------
+
+describe('assembleLocalizationResults — questions not found', () => {
+  it('omits targets not found in any window', () => {
+    const questions = [makeQuestion('1'), makeQuestion('2'), makeQuestion('3')];
+    const windowResults = [
+      makeWindowResult([
+        { question_number: '1', page_number: 1, bbox_1000: [0, 0, 500, 500] },
+        // question 2 not found
+        { question_number: '3', page_number: 2, bbox_1000: [0, 0, 500, 500] },
+      ]),
+    ];
+    const windows = [{ pages: [makePage(1), makePage(2), makePage(3)] }];
+
+    const results = assembleLocalizationResults('run_test', questions, windowResults, windows);
+
+    expect(results).toHaveLength(2);
+    expect(results[0].target_id).toBe('q_0001');
+    expect(results[1].target_id).toBe('q_0003');
+  });
+
+  it('returns empty array when no questions are found', () => {
+    const questions = [makeQuestion('1'), makeQuestion('2')];
+    const windowResults = [makeWindowResult([])];
+    const windows = [{ pages: [makePage(1), makePage(2), makePage(3)] }];
+
+    const results = assembleLocalizationResults('run_test', questions, windowResults, windows);
 
     expect(results).toEqual([]);
-    expect(localizer).not.toHaveBeenCalled();
   });
 
-  it('propagates errors from the localizer', async () => {
-    const segResult = makeSegResult(1);
+  it('returns empty array when question list is empty', () => {
+    const windowResults = [
+      makeWindowResult([
+        { question_number: '1', page_number: 1, bbox_1000: [0, 0, 500, 500] },
+      ]),
+    ];
+    const windows = [{ pages: [makePage(1)] }];
 
-    const localizer: Localizer = async () => {
-      throw { code: 'LOCALIZATION_SCHEMA_INVALID', message: 'bbox invalid' };
-    };
+    const results = assembleLocalizationResults('run_test', [], windowResults, windows);
 
-    await expect(
-      runLocalizationStep('run_err', segResult, [makePage(1)], PROFILE, '', localizer),
-    ).rejects.toMatchObject({ code: 'LOCALIZATION_SCHEMA_INVALID' });
+    expect(results).toEqual([]);
+  });
+
+  it('skips targets with no question_number', () => {
+    const questions: SegmentationTarget[] = [
+      { target_id: 'q_0001', target_type: 'question' }, // no question_number
+    ];
+    const windowResults = [
+      makeWindowResult([
+        { question_number: '1', page_number: 1, bbox_1000: [0, 0, 500, 500] },
+      ]),
+    ];
+    const windows = [{ pages: [makePage(1)] }];
+
+    const results = assembleLocalizationResults('run_test', questions, windowResults, windows);
+
+    expect(results).toEqual([]);
   });
 });

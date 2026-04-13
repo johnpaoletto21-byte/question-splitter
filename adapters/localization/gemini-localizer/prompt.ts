@@ -3,9 +3,10 @@
  *
  * Constructs the localization prompt for Agent 3 (Region Localizer).
  *
- * The prompt scopes the model to ONE target at a time.
- * Includes question_text context (with inline diagram notes) to help the
- * localizer understand what content to encompass.
+ * Agent 3 receives a sliding window of 1-3 page images and a list of
+ * known questions. It identifies which questions are visible and returns
+ * bounding boxes. No page numbers are mentioned — only image positions
+ * (1st, 2nd, 3rd image).
  */
 
 import type { CropTargetProfile } from '../../../core/crop-target-profile/types';
@@ -13,10 +14,16 @@ import type { SegmentationTarget } from '../../../core/segmentation-contract/typ
 import { DEFAULT_AGENT2_PROMPT } from '../../../core/prompt-config-store/default-prompts';
 
 /**
- * Builds the text portion of the Gemini localization prompt for one target.
+ * Builds the text portion of the Gemini localization prompt for a sliding window.
+ *
+ * @param questionList  The known questions from Agent 1 (question inventory).
+ * @param windowSize    Number of images in this window (1-3).
+ * @param profile       The active crop target profile.
+ * @param promptSnapshot Optional session instruction block.
  */
-export function buildLocalizationPrompt(
-  target: SegmentationTarget,
+export function buildWindowLocalizationPrompt(
+  questionList: ReadonlyArray<SegmentationTarget>,
+  windowSize: number,
   profile: CropTargetProfile,
   promptSnapshot: string,
 ): string {
@@ -24,24 +31,29 @@ export function buildLocalizationPrompt(
     ? promptSnapshot.trim()
     : DEFAULT_AGENT2_PROMPT;
 
-  const regionList = target.regions
-    .map((r, i) => `  - Region ${i + 1}: Page ${r.page_number}`)
+  const questionListText = questionList
+    .map((q) => {
+      const parts = [`  - Question ${q.question_number ?? '(unknown)'}`];
+      if (q.question_text) {
+        parts.push(`    Text: ${q.question_text}`);
+      }
+      if (q.sub_questions && q.sub_questions.length > 0) {
+        parts.push(`    Sub-parts: ${q.sub_questions.join(', ')}`);
+      }
+      return parts.join('\n');
+    })
     .join('\n');
-
-  const questionContext = target.question_text
-    ? `- Question text preview: ${target.question_text}`
-    : '';
 
   return `${instructionBlock}
 
 ## Run Context
-- Target ID: ${target.target_id}
 - Target type: ${profile.target_type}
-- Question number: ${target.question_number ?? '(unknown)'}
-${questionContext}
-- Finish page: ${target.finish_page_number ?? Math.max(...target.regions.map((r) => r.page_number))}
-- You may receive the previous page as context. Return bbox entries only for the page regions listed below.
-- Page regions to localize (in order):
-${regionList}
+- Number of images in this window: ${windowSize}
+- Use image_position to indicate which image (1 = first, 2 = second, 3 = third).
+
+## Known Questions (from earlier segmentation)
+${questionListText}
+
+For each question visible in the provided images, return its bounding box and which image it appears on.
 `;
 }

@@ -50,6 +50,7 @@ describe('bootstrapRun — run context creation', () => {
       agent1Prompt: 'provided agent 1',
       reviewerPrompt: 'provided reviewer',
       agent2Prompt: 'provided agent 2',
+      deduplicatorPrompt: 'provided deduplicator',
       capturedAt: '2024-01-01T00:00:00.000Z',
     };
     const ctx = bootstrapRun(makeRequest({ promptSnapshot }));
@@ -71,9 +72,9 @@ describe('bootstrapRun — run context creation', () => {
     expect(ctx.activeProfile.target_type).toBe('question');
   });
 
-  it('activeProfile has max_regions_per_target = 2', () => {
+  it('activeProfile has max_regions_per_target = 10', () => {
     const ctx = bootstrapRun(makeRequest());
-    expect(ctx.activeProfile.max_regions_per_target).toBe(2);
+    expect(ctx.activeProfile.max_regions_per_target).toBe(10);
   });
 
   it('activeProfile has composition_mode = "top_to_bottom"', () => {

@@ -8,7 +8,7 @@
  *   2. Build the prompt text.
  *   3. Call the Gemini generateContent REST endpoint with structured output.
  *   4. Parse the raw JSON response via parser.ts into a normalized
- *      SegmentationResult (no raw Gemini objects escape this boundary).
+ *      SegmentationResult (question inventory — no regions).
  *
  * No repair loops — relies on Gemini structured output mode for valid JSON.
  */
@@ -141,15 +141,7 @@ export function unwrapGeminiResponse(raw: unknown): unknown {
 
 /**
  * Segments a set of prepared page images using the Gemini API.
- *
- * @param runId          The current run_id (added to the normalized result).
- * @param pages          Prepared page images to include in this segmentation call.
- * @param profile        Active crop target profile (target_type, max regions).
- * @param promptSnapshot Session prompt override (empty string = use built-in prompt).
- * @param config         Gemini API key and optional model name.
- * @param httpPost       Injectable HTTP client (defaults to native fetch).
- * @param encodeFn       Injectable image encoder (defaults to readFileSync+base64).
- * @returns              Normalized SegmentationResult with targets in reading order.
+ * Returns a question inventory (no regions — localization is separate).
  */
 export async function segmentPages(
   runId: string,
@@ -178,7 +170,6 @@ export async function segmentPages(
   });
   const responseSchema = buildGeminiSegmentationSchema({
     extractionFields,
-    maxRegionsPerTarget: profile.max_regions_per_target,
   });
 
   const requestBody = buildGeminiRequest(promptText, pages, encodeFn, responseSchema);
@@ -190,8 +181,6 @@ export async function segmentPages(
   return parseGeminiSegmentationResponse(
     parsedJson,
     runId,
-    pages,
-    profile.max_regions_per_target,
     { extractionFields },
   );
 }

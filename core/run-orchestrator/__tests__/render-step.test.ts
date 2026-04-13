@@ -43,6 +43,7 @@ function makeContext(sourceCount: number): RunContext {
       agent1Prompt: '',
       reviewerPrompt: '',
       agent2Prompt: '',
+      deduplicatorPrompt: '',
       capturedAt: '2026-01-01T00:00:00.000Z',
     },
     started_at: '2026-01-01T00:00:00.000Z',
