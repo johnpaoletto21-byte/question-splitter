@@ -46,7 +46,9 @@ import {
   getAllowedSegmentationRegionPageNumbers,
   mergeWindowedSegmentationResults,
   selectLocalizationContextPages,
+  identifyGhostTargets,
 } from './page-windows';
+import type { DebugData } from '../../core/run-summary/debug-types';
 
 export interface PipelineLogEvent {
   stage: string;
@@ -329,6 +331,30 @@ export async function runFullPipeline(
     .filter((row): row is FinalResultRow => row !== undefined);
 
   summary = applyFinalResultsToSummary(summary, orderedFinalRows);
+
+  const debugData: DebugData = {
+    agent1WindowResults: windowResults.map((wr, i) => ({
+      focusPageNumber: segmentationWindows[i].focusPageNumber,
+      contextPageNumbers: segmentationWindows[i].pages.map((p) => p.page_number),
+      allowedRegionPageNumbers: getAllowedSegmentationRegionPageNumbers(
+        segmentationWindows[i].focusPageNumber,
+      ),
+      targets: wr.targets,
+    })),
+    agent1MergedSegmentation: segmentation,
+    ghostTargetsRemoved: identifyGhostTargets(windowResults),
+    reviewStepOutput: reviewedSegmentation,
+    reviewStepCorrected: wasCorrected,
+    localizationResults: localized,
+    localizationFailures: localizationFailureRows.map((row) => ({
+      targetId: row.target_id,
+      sourcePages: row.source_pages,
+      failureCode: row.status === 'failed' ? row.failure_code : 'UNKNOWN',
+      failureMessage: row.status === 'failed' ? row.failure_message : '',
+    })),
+  };
+  summary = { ...summary, debugData };
+
   emit(input.onLog, 'summary', 'Summary ready');
   return summary;
 }
