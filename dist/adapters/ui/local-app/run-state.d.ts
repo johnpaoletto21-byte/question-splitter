@@ -17,6 +17,7 @@ export interface LocalRunRecord {
     status: LocalRunStatus;
     runLabel?: string;
     pdfFileName?: string;
+    pdfFilePath?: string;
     outputDir?: string;
     createdAt: string;
     updatedAt: string;
@@ -30,6 +31,7 @@ export interface LocalRunRecord {
 export declare function createRunRecord(input: {
     runLabel?: string;
     pdfFileName?: string;
+    pdfFilePath?: string;
     outputDir?: string;
     extractionFields?: ExtractionFieldDefinition[];
     promptSnapshot?: PromptSnapshot;

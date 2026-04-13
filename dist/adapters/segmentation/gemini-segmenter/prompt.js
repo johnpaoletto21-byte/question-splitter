@@ -43,6 +43,7 @@ function buildSegmentationPrompt(pages, profile, promptSnapshot, options = {}) {
 - Allowed output region page_numbers: ${(options.allowedRegionPageNumbers ?? []).join(', ')}
 - Use only the listed page_number labels from "Pages provided"; image order is not page number.
 - The first provided image may be a page like 4, not page 1. Never infer page_number from image position.
+- Every returned target MUST have at least one region on the focus page (page ${options.focusPageNumber}). If a target has content only on a previous page, do not return it — it belongs to a previous window.
 - Use the next page only to decide whether a target really continues past the focus page; do not return targets that end after the focus page.
 - The next page is context only and must not appear in regions.
 - If no target ends on the focus page, return an empty targets array.`;

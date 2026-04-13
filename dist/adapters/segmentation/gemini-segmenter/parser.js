@@ -68,13 +68,24 @@ function parseGeminiSegmentationResponse(raw, runId, maxRegionsPerTarget = 2, op
     // (reading order). The ID encodes position so downstream sorting is stable.
     const offset = options.targetIdOffset ?? 0;
     const targets = raw.targets.map((t, i) => {
+        // Gemini may return page numbers as strings when enum constraints are
+        // used (enum is only allowed on STRING-typed fields). Coerce back to
+        // numbers so downstream validation sees the expected integer type.
+        const regions = t.regions.map((r) => ({
+            ...r,
+            page_number: typeof r.page_number === 'string' ? Number(r.page_number) : r.page_number,
+        }));
         const target = {
             target_id: makeTargetId(offset + i),
             target_type: t.target_type,
-            regions: t.regions,
+            regions,
         };
-        if (typeof t.finish_page_number === 'number') {
-            target['finish_page_number'] = t.finish_page_number;
+        const rawFinish = t.finish_page_number;
+        if (typeof rawFinish === 'number') {
+            target['finish_page_number'] = rawFinish;
+        }
+        else if (typeof rawFinish === 'string') {
+            target['finish_page_number'] = Number(rawFinish);
         }
         if (t.extraction_fields !== undefined) {
             target['extraction_fields'] = t.extraction_fields;
@@ -84,7 +95,38 @@ function parseGeminiSegmentationResponse(raw, runId, maxRegionsPerTarget = 2, op
         }
         return target;
     });
-    const normalized = { run_id: runId, targets };
+    // When running in focus-page mode, silently drop targets whose regions
+    // don't reach the focus page. These belong to a previous window and would
+    // otherwise fail the "max region page must equal finish_page_number" check.
+    const focusPage = options.focusPageNumber;
+    let filteredTargets = focusPage !== undefined
+        ? targets.filter((t) => {
+            const regions = t['regions'];
+            return regions.some((r) => r.page_number === focusPage);
+        }).map((t, i) => ({ ...t, target_id: makeTargetId(offset + i) }))
+        : targets;
+    // Safety net: drop targets whose ALL regions are on pages the model itself
+    // classified as non-content. A real question must have at least one region
+    // on a question_content or figure_only page. If the model creates a target
+    // but classifies every page it references as blank/cover/answer_sheet,
+    // that's a contradiction — trust the classification.
+    // Gracefully skipped if page_classifications is absent (backward compat).
+    const NON_CONTENT_CLASSIFICATIONS = new Set(['blank', 'cover', 'answer_sheet']);
+    const rawClassifications = raw['page_classifications'];
+    if (Array.isArray(rawClassifications)) {
+        const nonContentPages = new Set(rawClassifications
+            .filter((c) => NON_CONTENT_CLASSIFICATIONS.has(c.classification))
+            .map((c) => typeof c.page_number === 'string' ? Number(c.page_number) : c.page_number));
+        if (nonContentPages.size > 0) {
+            filteredTargets = filteredTargets
+                .filter((t) => {
+                const regions = t['regions'];
+                return regions.some((r) => !nonContentPages.has(r.page_number));
+            })
+                .map((t, i) => ({ ...t, target_id: makeTargetId(offset + i) }));
+        }
+    }
+    const normalized = { run_id: runId, targets: filteredTargets };
     // Run full contract validation (enforces INV-2, INV-3, INV-4 constraints).
     return (0, validation_1.validateSegmentationResult)(normalized, maxRegionsPerTarget, {
         extractionFields: options.extractionFields,

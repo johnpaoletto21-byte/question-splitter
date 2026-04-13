@@ -27,15 +27,23 @@
  * TASK-501 adds this module.
  */
 import type { RunSummaryState } from '../../../core/run-summary/types';
+export interface SummaryRenderOptions {
+    sourcePdfUrl?: string;
+}
 /**
  * Renders a RunSummaryState as a self-contained HTML string.
  *
  * All target rows are always rendered (INV-8: partial failures stay visible).
  * review_comment fields appear in the rendered table (INV-4: visible in summary UI).
  *
- * @param state  The run summary state, typically after applyFinalResultsToSummary.
- * @returns      UTF-8 HTML string suitable for writing to a .html file and opening
- *               in a browser for manual or automated review.
+ * When `options.sourcePdfUrl` is provided, renders a split-view layout with
+ * target cards on the left and the source PDF on the right.
+ * When absent, renders the original table layout for backward compatibility.
+ *
+ * @param state    The run summary state, typically after applyFinalResultsToSummary.
+ * @param options  Optional rendering options (e.g. sourcePdfUrl for split-view).
+ * @returns        UTF-8 HTML string suitable for writing to a .html file and opening
+ *                 in a browser for manual or automated review.
  */
-export declare function renderSummaryHtml(state: RunSummaryState): string;
+export declare function renderSummaryHtml(state: RunSummaryState, options?: SummaryRenderOptions): string;
 //# sourceMappingURL=summary-renderer.d.ts.map

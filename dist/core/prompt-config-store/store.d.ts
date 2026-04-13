@@ -23,6 +23,11 @@ export declare function getPromptConfig(): PromptConfigState;
  */
 export declare function setAgent1Prompt(prompt: string): void;
 /**
+ * Updates the Agent 1.5 (reviewer) prompt for the current session.
+ * Does not affect any active run — runs use their start-time snapshot.
+ */
+export declare function setReviewerPrompt(prompt: string): void;
+/**
  * Updates the Agent 2 (localizer) prompt for the current session.
  * Does not affect any active run — runs use their start-time snapshot.
  */

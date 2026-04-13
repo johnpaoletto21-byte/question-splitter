@@ -4,7 +4,7 @@
  * Adapter-layer glue for the full local PDF-to-Drive pipeline.
  */
 import type { LocalConfig } from '../config/local-config/types';
-import type { PageRenderer, Segmenter, Localizer, CropExecutor, ImageStackerFn, DriveUploaderFn } from '../../core/run-orchestrator';
+import type { PageRenderer, Segmenter, SegmentationReviewer, Localizer, CropExecutor, ImageStackerFn, DriveUploaderFn } from '../../core/run-orchestrator';
 import type { RunSummaryState } from '../../core/run-summary/types';
 import type { PromptSnapshot } from '../../core/prompt-config-store/types';
 import type { ExtractionFieldDefinition } from '../../core/extraction-fields';
@@ -24,6 +24,7 @@ export interface RunFullPipelineInput {
 export interface RunFullPipelineDependencies {
     renderer?: PageRenderer;
     segmenter?: Segmenter;
+    reviewer?: SegmentationReviewer;
     localizer?: Localizer;
     cropExecutor?: CropExecutor;
     imageStacker?: ImageStackerFn;

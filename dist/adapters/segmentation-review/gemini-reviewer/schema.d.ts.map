@@ -1,0 +1,1 @@
+{"version":3,"file":"schema.d.ts","sourceRoot":"","sources":["../../../../adapters/segmentation-review/gemini-reviewer/schema.ts"],"names":[],"mappings":"AAAA;;;;GAIG;AAEH,OAAO,KAAK,EAAE,yBAAyB,EAAE,MAAM,iCAAiC,CAAC;AAGjF,wBAAgB,uBAAuB,CAAC,KAAK,GAAE;IAC7C,gBAAgB,CAAC,EAAE,aAAa,CAAC,yBAAyB,CAAC,CAAC;CACxD,GAAG,MAAM,CAAC,MAAM,EAAE,OAAO,CAAC,CA2B/B"}

@@ -27,6 +27,7 @@ function createRunRecord(input) {
         status: 'queued',
         runLabel: input.runLabel,
         pdfFileName: input.pdfFileName,
+        pdfFilePath: input.pdfFilePath,
         outputDir: input.outputDir,
         createdAt: timestamp,
         updatedAt: timestamp,
