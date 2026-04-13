@@ -47,6 +47,42 @@ describe('buildChunkedPageWindows', () => {
     const chunks = buildChunkedPageWindows([page(3), page(1), page(2)], 10, 3);
     expect(chunks[0].pages.map((p) => p.page_number)).toEqual([1, 2, 3]);
   });
+
+  it('absorbs small remainder into the last chunk (12 pages)', () => {
+    const pages = Array.from({ length: 12 }, (_, i) => page(i + 1));
+    const chunks = buildChunkedPageWindows(pages, 10, 3);
+
+    // 12 pages: chunk 0 would be 1-10, remainder is 2 pages (≤ overlap=3)
+    // So remainder is absorbed → single chunk of pages 1-12
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].pages.map((p) => p.page_number)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+  });
+
+  it('absorbs small remainder for 11 pages', () => {
+    const pages = Array.from({ length: 11 }, (_, i) => page(i + 1));
+    const chunks = buildChunkedPageWindows(pages, 10, 3);
+
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].endPage).toBe(11);
+  });
+
+  it('absorbs small remainder for 13 pages (remainder=3 ≤ overlap=3)', () => {
+    const pages = Array.from({ length: 13 }, (_, i) => page(i + 1));
+    const chunks = buildChunkedPageWindows(pages, 10, 3);
+
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].endPage).toBe(13);
+  });
+
+  it('does NOT absorb when remainder exceeds overlap (14 pages)', () => {
+    const pages = Array.from({ length: 14 }, (_, i) => page(i + 1));
+    const chunks = buildChunkedPageWindows(pages, 10, 3);
+
+    expect(chunks).toHaveLength(2);
+    expect(chunks[0].pages.map((p) => p.page_number)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(chunks[1].startPage).toBe(8);
+    expect(chunks[1].endPage).toBe(14);
+  });
 });
 
 // ---------------------------------------------------------------------------

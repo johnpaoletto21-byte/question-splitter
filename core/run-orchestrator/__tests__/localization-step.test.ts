@@ -13,7 +13,7 @@
  *   - target_id comes from the matched SegmentationTarget.
  */
 
-import { assembleLocalizationResults } from '../localization-step';
+import { assembleLocalizationResults, padBbox } from '../localization-step';
 import type { WindowLocalizationResult } from '../localization-step';
 import type { SegmentationTarget } from '../../segmentation-contract/types';
 import type { PreparedPageImage } from '../../source-model/types';
@@ -167,8 +167,8 @@ describe('assembleLocalizationResults — centrality-based dedup', () => {
     const results = assembleLocalizationResults('run_test', questions, windowResults, windows);
 
     expect(results[0].regions).toHaveLength(1);
-    // Should keep bbox from window 0 (centrality 1 > centrality 0)
-    expect(results[0].regions[0].bbox_1000).toEqual([100, 100, 900, 900]);
+    // Should keep bbox from window 0 (centrality 1 > centrality 0), padded by 30
+    expect(results[0].regions[0].bbox_1000).toEqual([70, 70, 930, 930]);
   });
 
   it('keeps edge bbox when no more central window exists', () => {
@@ -185,7 +185,7 @@ describe('assembleLocalizationResults — centrality-based dedup', () => {
 
     const results = assembleLocalizationResults('run_test', questions, windowResults, windows);
 
-    expect(results[0].regions[0].bbox_1000).toEqual([50, 50, 950, 950]);
+    expect(results[0].regions[0].bbox_1000).toEqual([20, 20, 980, 980]);
   });
 
   it('deduplicates across three overlapping windows correctly', () => {
@@ -214,7 +214,7 @@ describe('assembleLocalizationResults — centrality-based dedup', () => {
     const results = assembleLocalizationResults('run_test', questions, windowResults, windows);
 
     expect(results[0].regions).toHaveLength(1);
-    expect(results[0].regions[0].bbox_1000).toEqual([0, 0, 500, 500]); // from window 1
+    expect(results[0].regions[0].bbox_1000).toEqual([0, 0, 530, 530]); // from window 1, padded
   });
 });
 
@@ -278,5 +278,31 @@ describe('assembleLocalizationResults — questions not found', () => {
     const results = assembleLocalizationResults('run_test', questions, windowResults, windows);
 
     expect(results).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// padBbox
+// ---------------------------------------------------------------------------
+
+describe('padBbox', () => {
+  it('expands bbox by default 30 units on each side', () => {
+    expect(padBbox([100, 100, 900, 900])).toEqual([70, 70, 930, 930]);
+  });
+
+  it('clamps to [0, 1000] bounds', () => {
+    expect(padBbox([10, 10, 990, 990])).toEqual([0, 0, 1000, 1000]);
+  });
+
+  it('handles bbox already at edges', () => {
+    expect(padBbox([0, 0, 1000, 1000])).toEqual([0, 0, 1000, 1000]);
+  });
+
+  it('accepts custom padding value', () => {
+    expect(padBbox([100, 100, 900, 900], 50)).toEqual([50, 50, 950, 950]);
+  });
+
+  it('handles small bbox', () => {
+    expect(padBbox([500, 500, 510, 510])).toEqual([470, 470, 540, 540]);
   });
 });

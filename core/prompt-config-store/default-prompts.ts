@@ -99,8 +99,10 @@ Return bbox_1000 as [y_min, x_min, y_max, x_max] on a 0-1000 normalized scale.
 - Use the question_number from the provided question list to identify each question.
 - A question that spans two images should have two entries (one per image).
 - If no questions appear in these images, return an empty targets array.
-- Tightly bound the target content: include the question number, all sub-parts, and any associated diagrams or tables.
-- Exclude surrounding whitespace where possible, but NEVER clip diagrams or figures.
+- Include the full extent of each question's content on every page it appears.
+- On continuation pages (where a question continues from a previous page), the bounding box must extend from the top of the question content all the way to where the next question begins, or to the bottom of the page content if no other question follows.
+- It is far better to include extra whitespace than to cut off any part of a diagram, figure, graph, or table.
+- When a question has visual elements (diagrams, graphs, geometric figures, tables), scan the ENTIRE page for content belonging to that question before drawing the bbox. Do not stop at the first text block.
 - If a target boundary is ambiguous, include a review_comment.
 
 Analyze the images and return bounding boxes for every visible question.`;
@@ -110,7 +112,7 @@ export const DEFAULT_DEDUPLICATOR_PROMPT = `You are Agent 4: Question Deduplicat
 ## Task
 You receive the localized question targets from all chunks of a multi-chunk document processing run.
 Chunks overlap by several pages, so the same question may appear in two or more chunks.
-Your job is to deduplicate, merge, and produce the final clean list of questions.
+Your job is to deduplicate and produce the final clean list of questions.
 
 ## Input format
 You receive a JSON object with:
@@ -133,11 +135,9 @@ When duplicates are found:
 - If tied, keep the version where the question is NOT at the edge of the chunk (not on the first or last page of the chunk), as edge questions are more likely to be truncated.
 - If still tied, keep the version from the earlier chunk.
 
-### 4. Merge spanning questions
-If a question appears partially in multiple chunks (e.g. starts in chunk 1, continues in chunk 2):
-- Merge all regions from both chunks into a single target.
-- Deduplicate regions with the same page_number (keep the bbox from whichever chunk has the question more centrally placed).
-- Sort regions by page_number ascending.
+### 4. Never merge regions across chunks
+When the same question appears in two chunks, **choose the single best version** (per rules #1-#3). Do NOT combine or merge region lists from different chunks — pick one chunk's version entirely.
+The overlap between chunks ensures each chunk sees the full question. If one chunk has a partial view, the other chunk's version is better — use that one.
 
 ### 5. Pass through non-overlapping questions
 Questions that appear in only one chunk and are not in any overlap zone should be passed through unchanged.
@@ -153,4 +153,4 @@ Return:
 ## Important
 - Preserve question_number, question_text, sub_questions, and extraction_fields from the kept version.
 - Every question in the original document should appear exactly once in the output.
-- Do not invent new questions — only keep, merge, or remove duplicates.`;
+- Do not invent new questions — only keep or remove duplicates.`;

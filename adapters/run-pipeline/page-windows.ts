@@ -61,7 +61,17 @@ export function buildChunkedPageWindows(
 
   while (startIdx < sorted.length) {
     const endIdx = Math.min(startIdx + chunkSize, sorted.length);
-    const chunkPages = sorted.slice(startIdx, endIdx);
+    let chunkPages = sorted.slice(startIdx, endIdx);
+
+    // If the remaining pages beyond this chunk are ≤ overlap, absorb them
+    // into this chunk instead of creating a tiny next chunk with mostly
+    // overlapping content.  E.g. 12 pages with chunkSize=10, overlap=3:
+    // without this, chunk 0 = pages 1-10, chunk 1 = pages 8-12 (3 overlap).
+    // With this, chunk 0 = pages 1-12 (single chunk, no dedup needed).
+    const remaining = sorted.length - endIdx;
+    if (remaining > 0 && remaining <= overlap) {
+      chunkPages = sorted.slice(startIdx);
+    }
 
     chunks.push({
       chunkIndex,
@@ -69,6 +79,9 @@ export function buildChunkedPageWindows(
       startPage: chunkPages[0].page_number,
       endPage: chunkPages[chunkPages.length - 1].page_number,
     });
+
+    // If we absorbed remaining pages, we're done
+    if (remaining > 0 && remaining <= overlap) break;
 
     chunkIndex++;
     startIdx += stride;
