@@ -1,85 +1,128 @@
 /**
  * core/run-orchestrator/localization-step.ts
  *
- * Orchestrator step that invokes Agent 2 localization for each target and
- * returns the ordered array of normalized LocalizationResults.
+ * Orchestrator step that runs sliding window localization (Agent 3)
+ * and assembles the per-window results into per-target LocalizationResults.
  *
- * Design (mirrors segmentation-step.ts pattern):
- *   - The actual localizer is injected as a `Localizer` function so that
+ * Design:
+ *   - The actual localizer is injected as a `WindowLocalizer` function so that
  *     core stays free of provider SDK imports (INV-9 / PO-8).
- *   - `adapters/localization/gemini-localizer` implements the Localizer type.
- *   - Targets are processed in the order Agent 1 produced them (reading order).
- *     Agent 2 never drives target order — it only localizes what Agent 1 found.
- *   - LocalizationResult[] preserves the same index order as
- *     SegmentationResult.targets so downstream steps can zip them safely.
- *
- * TASK-502 (complete): promptSnapshot is captured by bootstrapRun from
- * core/prompt-config-store and passed here by the caller. The snapshot is
- * immutable — mid-run UI edits do not drift into an active run (INV-7).
+ *   - Windows are built by the caller and passed in.
+ *   - Assembly groups regions by question_number, matches to segmentation targets,
+ *     deduplicates overlapping pages, and produces LocalizationResult[].
  */
 
 import type { PreparedPageImage } from '../source-model/types';
 import type { CropTargetProfile } from '../crop-target-profile/types';
-import type { SegmentationResult } from '../segmentation-contract/types';
 import type { SegmentationTarget } from '../segmentation-contract/types';
 import type { LocalizationResult } from '../localization-contract/types';
 
 /**
- * Contract for a localizer function.
- * Implemented in `adapters/localization/gemini-localizer`.
- * Kept here so core can type-check the dependency without importing any SDK.
- *
- * @param runId          Run identifier to embed in the result.
- * @param target         The Agent 1 SegmentationTarget to localize.
- * @param pages          All prepared page images for the run (adapter filters internally).
- * @param profile        Active crop target profile.
- * @param promptSnapshot Session-scoped prompt override (empty = built-in).
+ * Intermediate result from a single window localization call.
+ * Matches the shape produced by the adapter parser.
  */
-export type Localizer = (
-  runId: string,
-  target: SegmentationTarget,
-  pages: PreparedPageImage[],
-  profile: CropTargetProfile,
-  promptSnapshot: string,
-) => Promise<LocalizationResult>;
+export interface WindowLocalizationRegion {
+  question_number: string;
+  page_number: number;
+  bbox_1000: [number, number, number, number];
+}
+
+export interface WindowLocalizationResult {
+  run_id: string;
+  regions: WindowLocalizationRegion[];
+  review_comment?: string;
+}
 
 /**
- * Runs the Agent 2 localization step for all targets in the segmentation result.
- *
- * Calls the injected localizer once per target, in the reading order from
- * Agent 1. Returns results in the same order so downstream steps can rely on
- * index alignment between SegmentationResult.targets and LocalizationResult[].
- *
- * Agent 2 cannot add, remove, or reorder targets — those decisions were made
- * by Agent 1. Any attempt to drift is rejected by the parser/contract layer.
- *
- * @param runId              The current run_id (from RunContext).
- * @param segmentationResult The normalized Agent 1 result (source of target order).
- * @param pages              Prepared pages from the render step (INV-1 gate must
- *                           have run before this is called).
- * @param profile            The active crop target profile.
- * @param promptSnapshot     Session prompt override (TASK-502: wired from context.promptSnapshot).
- * @param localizer          The adapter function that performs the actual API call.
- * @returns                  Ordered LocalizationResult[] — one per target, same order
- *                           as SegmentationResult.targets.
- * @throws                   Re-throws any error from the localizer (caller handles
- *                           per-target failure continuation if needed).
+ * Contract for a window localizer function.
+ * Implemented in `adapters/localization/gemini-localizer`.
  */
-export async function runLocalizationStep(
+export type WindowLocalizer = (
   runId: string,
-  segmentationResult: SegmentationResult,
-  pages: PreparedPageImage[],
+  questionList: ReadonlyArray<SegmentationTarget>,
+  windowPages: PreparedPageImage[],
   profile: CropTargetProfile,
   promptSnapshot: string,
-  localizer: Localizer,
-): Promise<LocalizationResult[]> {
+) => Promise<WindowLocalizationResult>;
+
+/**
+ * Assembles per-window results into per-target LocalizationResults.
+ *
+ * For each question in the segmentation targets:
+ *   1. Collect all regions across all windows that match by question_number.
+ *   2. Deduplicate by page_number — when the same page appears in multiple
+ *      windows, keep the bbox from the window where the page was most central
+ *      (farthest from the window edge).
+ *   3. Sort regions by page_number ascending.
+ *   4. Build LocalizationResult with target_id from the matched SegmentationTarget.
+ *
+ * @param runId           The current run_id.
+ * @param questionList    The segmentation targets (question inventory).
+ * @param windowResults   Results from all window localization calls.
+ * @param windows         The windows that were used (for centrality scoring).
+ * @returns               LocalizationResult[] — one per target that was found.
+ *                        Targets not found in any window are omitted.
+ */
+export function assembleLocalizationResults(
+  runId: string,
+  questionList: ReadonlyArray<SegmentationTarget>,
+  windowResults: ReadonlyArray<WindowLocalizationResult>,
+  windows: ReadonlyArray<{ pages: ReadonlyArray<PreparedPageImage> }>,
+): LocalizationResult[] {
+  // Build a map: for each (question_number, page_number), collect all bbox entries
+  // with a centrality score (how far from the edge of the window the page was).
+  const regionMap = new Map<string, Map<number, { bbox: [number, number, number, number]; centrality: number }>>();
+
+  for (let wi = 0; wi < windowResults.length; wi++) {
+    const wr = windowResults[wi];
+    const windowPages = windows[wi]?.pages ?? [];
+    const windowSize = windowPages.length;
+
+    for (const region of wr.regions) {
+      // Centrality: how far from the edge. For a 3-page window:
+      // page at position 0 (first) → centrality 0
+      // page at position 1 (middle) → centrality 1
+      // page at position 2 (last) → centrality 0
+      const pageIndex = windowPages.findIndex((p) => p.page_number === region.page_number);
+      const distFromEdge = Math.min(pageIndex, windowSize - 1 - pageIndex);
+
+      if (!regionMap.has(region.question_number)) {
+        regionMap.set(region.question_number, new Map());
+      }
+      const pageMap = regionMap.get(region.question_number)!;
+
+      const existing = pageMap.get(region.page_number);
+      if (!existing || distFromEdge > existing.centrality) {
+        pageMap.set(region.page_number, {
+          bbox: region.bbox_1000,
+          centrality: distFromEdge,
+        });
+      }
+    }
+  }
+
+  // Build LocalizationResult for each target
   const results: LocalizationResult[] = [];
 
-  for (const target of segmentationResult.targets) {
-    // Process targets sequentially in reading order.
-    // Target order from segmentation is authoritative — no sorting applied.
-    const result = await localizer(runId, target, pages, profile, promptSnapshot);
-    results.push(result);
+  for (const target of questionList) {
+    const qn = target.question_number;
+    if (!qn) continue;
+
+    const pageMap = regionMap.get(qn);
+    if (!pageMap || pageMap.size === 0) continue;
+
+    const regions = [...pageMap.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([pageNumber, { bbox }]) => ({
+        page_number: pageNumber,
+        bbox_1000: bbox,
+      }));
+
+    results.push({
+      run_id: runId,
+      target_id: target.target_id,
+      regions,
+    });
   }
 
   return results;

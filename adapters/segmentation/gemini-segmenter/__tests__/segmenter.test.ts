@@ -6,7 +6,7 @@
  *
  * Proves:
  *   - segmentPages calls the Gemini endpoint correctly.
- *   - Returns a normalized SegmentationResult.
+ *   - Returns a normalized SegmentationResult (question inventory).
  *   - review_comment propagates through.
  *   - API errors are surfaced with a descriptive message.
  *   - buildGeminiRequest and unwrapGeminiResponse helper behavior.
@@ -92,9 +92,8 @@ describe('buildGeminiRequest', () => {
 });
 
 describe('buildGeminiSegmentationSchema', () => {
-  it('requires finish_page_number and configured boolean fields when provided', () => {
+  it('requires configured boolean fields when provided', () => {
     const schema = buildGeminiSegmentationSchema({
-      requireFinishPage: true,
       extractionFields: [{
         key: 'has_diagram',
         label: 'Has Diagram',
@@ -108,46 +107,29 @@ describe('buildGeminiSegmentationSchema', () => {
     const properties = item['properties'] as Record<string, unknown>;
     const extraction = properties['extraction_fields'] as Record<string, unknown>;
 
-    expect(required).toContain('finish_page_number');
     expect(required).toContain('extraction_fields');
     expect((extraction['required'] as string[])).toContain('has_diagram');
   });
 
-  it('restricts focus-page finish page and allowed region pages', () => {
-    const schema = buildGeminiSegmentationSchema({
-      requireFinishPage: true,
-      focusPageNumber: 5,
-      allowedRegionPageNumbers: [4, 5],
-    });
+  it('includes question_number, question_text, sub_questions in schema', () => {
+    const schema = buildGeminiSegmentationSchema();
     const targets = ((schema['properties'] as Record<string, unknown>)['targets'] as Record<string, unknown>);
     const item = (targets['items'] as Record<string, unknown>);
     const properties = item['properties'] as Record<string, unknown>;
-    const finish = properties['finish_page_number'] as Record<string, unknown>;
-    const regions = properties['regions'] as Record<string, unknown>;
-    const regionItems = regions['items'] as Record<string, unknown>;
-    const regionProperties = regionItems['properties'] as Record<string, unknown>;
-    const pageNumber = regionProperties['page_number'] as Record<string, unknown>;
 
-    expect(finish['enum']).toEqual(['5']);
-    expect(pageNumber['enum']).toEqual(['4', '5']);
-    expect(pageNumber['enum']).not.toContain('6');
+    expect(properties['question_number']).toBeDefined();
+    expect(properties['question_text']).toBeDefined();
+    expect(properties['sub_questions']).toBeDefined();
   });
 
-  it('restricts first focus-page output regions to page 1', () => {
-    const schema = buildGeminiSegmentationSchema({
-      requireFinishPage: true,
-      focusPageNumber: 1,
-      allowedRegionPageNumbers: [1],
-    });
+  it('does not include regions or finish_page_number in schema', () => {
+    const schema = buildGeminiSegmentationSchema();
     const targets = ((schema['properties'] as Record<string, unknown>)['targets'] as Record<string, unknown>);
     const item = (targets['items'] as Record<string, unknown>);
     const properties = item['properties'] as Record<string, unknown>;
-    const regions = properties['regions'] as Record<string, unknown>;
-    const regionItems = regions['items'] as Record<string, unknown>;
-    const regionProperties = regionItems['properties'] as Record<string, unknown>;
-    const pageNumber = regionProperties['page_number'] as Record<string, unknown>;
 
-    expect(pageNumber['enum']).toEqual(['1']);
+    expect(properties['regions']).toBeUndefined();
+    expect(properties['finish_page_number']).toBeUndefined();
   });
 });
 
@@ -157,7 +139,7 @@ describe('buildGeminiSegmentationSchema', () => {
 
 describe('unwrapGeminiResponse', () => {
   it('extracts and parses JSON from the first candidate text part', () => {
-    const inner = { targets: [{ target_type: 'question', regions: [{ page_number: 1 }] }] };
+    const inner = { targets: [{ target_type: 'question', question_number: '1', question_text: 'Q1', sub_questions: [] }] };
     const envelope = makeGeminiEnvelope(inner);
     const result = unwrapGeminiResponse(envelope);
     expect(result).toEqual(inner);
@@ -188,11 +170,12 @@ describe('segmentPages', () => {
 
   const mockInner = {
     targets: [
-      { target_type: 'question', finish_page_number: 1, regions: [{ page_number: 1 }] },
+      { target_type: 'question', question_number: '1', question_text: 'What is X?', sub_questions: [] },
       {
         target_type: 'question',
-        finish_page_number: 3,
-        regions: [{ page_number: 2 }, { page_number: 3 }],
+        question_number: '2',
+        question_text: 'Explain Y.',
+        sub_questions: ['(a)', '(b)'],
         review_comment: 'Spans two pages',
       },
     ],
@@ -267,12 +250,13 @@ describe('segmentPages', () => {
     ).rejects.toThrow('candidates');
   });
 
-  it('passes focus page and extraction field options into schema, prompt, and parser', async () => {
+  it('passes extraction field options into schema, prompt, and parser', async () => {
     mockHttpPost.mockResolvedValueOnce(makeGeminiEnvelope({
       targets: [{
         target_type: 'question',
-        finish_page_number: 2,
-        regions: [{ page_number: 2 }],
+        question_number: '1',
+        question_text: 'Q1',
+        sub_questions: [],
         extraction_fields: { has_diagram: true },
       }],
     }));
@@ -286,8 +270,6 @@ describe('segmentPages', () => {
       mockHttpPost,
       mockEncodeFn,
       {
-        focusPageNumber: 2,
-        allowedRegionPageNumbers: [1, 2],
         extractionFields: [{
           key: 'has_diagram',
           label: 'Has Diagram',
@@ -300,85 +282,8 @@ describe('segmentPages', () => {
     const body = mockHttpPost.mock.calls[0][1] as Record<string, unknown>;
     const contents = body['contents'] as Record<string, unknown>[];
     const prompt = ((contents[0]['parts'] as Record<string, unknown>[])[0]['text']) as string;
-    expect(prompt).toContain('Focus page: 2');
-    expect(prompt).toContain('Allowed output region page_numbers: 1, 2');
     expect(prompt).toContain('has_diagram');
-    expect(result.targets[0].finish_page_number).toBe(2);
     expect(result.targets[0].extraction_fields).toEqual({ has_diagram: true });
-  });
-
-  it('repairs a segmentation schema error and returns corrected output', async () => {
-    // Invalid: regions include page 3 which is outside allowed [4, 5], but
-    // the target reaches focus page 5 so the focus-page filter keeps it.
-    mockHttpPost
-      .mockResolvedValueOnce(makeGeminiEnvelope({
-        targets: [{
-          target_type: 'question',
-          finish_page_number: 5,
-          regions: [{ page_number: 3 }, { page_number: 5 }],
-        }],
-      }))
-      .mockResolvedValueOnce(makeGeminiEnvelope({
-        targets: [{
-          target_type: 'question',
-          finish_page_number: 5,
-          regions: [{ page_number: 5 }],
-        }],
-      }));
-
-    const result = await segmentPages(
-      RUN_ID,
-      [makePage(4), makePage(5), makePage(6)],
-      PROFILE,
-      '',
-      CONFIG,
-      mockHttpPost,
-      mockEncodeFn,
-      {
-        focusPageNumber: 5,
-        allowedRegionPageNumbers: [4, 5],
-      },
-    );
-
-    expect(mockHttpPost).toHaveBeenCalledTimes(2);
-    const retryBody = mockHttpPost.mock.calls[1][1] as Record<string, unknown>;
-    const contents = retryBody['contents'] as Record<string, unknown>[];
-    const retryPrompt = ((contents[0]['parts'] as Record<string, unknown>[])[0]['text']) as string;
-    expect(retryPrompt).toContain('Correction Required');
-    expect(retryPrompt).toContain('regions contains page 3');
-    expect(retryPrompt).toContain('Allowed output region page_numbers: 4, 5');
-    expect(retryPrompt).toContain('"page_number": 3');
-    expect(result.targets[0].regions).toEqual([{ page_number: 5 }]);
-  });
-
-  it('throws retry context after segmentation repair retries are exhausted', async () => {
-    // Invalid: regions include page 3 which is outside allowed [4, 5], but
-    // the target reaches focus page 5 so the focus-page filter keeps it.
-    mockHttpPost.mockResolvedValue(makeGeminiEnvelope({
-      targets: [{
-        target_type: 'question',
-        finish_page_number: 5,
-        regions: [{ page_number: 3 }, { page_number: 5 }],
-      }],
-    }));
-
-    await expect(segmentPages(
-      RUN_ID,
-      [makePage(4), makePage(5), makePage(6)],
-      PROFILE,
-      '',
-      CONFIG,
-      mockHttpPost,
-      mockEncodeFn,
-      {
-        focusPageNumber: 5,
-        allowedRegionPageNumbers: [4, 5],
-      },
-    )).rejects.toMatchObject({
-      code: 'SEGMENTATION_SCHEMA_INVALID',
-      message: expect.stringContaining('after 2 retries'),
-    });
-    expect(mockHttpPost).toHaveBeenCalledTimes(3);
   });
 
   it('surfaces httpPost errors', async () => {

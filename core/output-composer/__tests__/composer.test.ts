@@ -92,7 +92,7 @@ describe('composeOutput — 2-region top-to-bottom composition', () => {
 
     expect(stacker).toHaveBeenCalledTimes(1);
     expect(stacker).toHaveBeenCalledWith(
-      'q_0001',
+      'q_0001_step1',
       '/tmp/crops/q_0001_r0.png',
       '/tmp/crops/q_0001_r1.png',
     );
@@ -147,7 +147,10 @@ describe('composeOutput — INV-3: region count guard', () => {
     });
   });
 
-  it('throws CompositionError for 3 regions (no silent 3+ support)', async () => {
+  it('chains stacker calls for 3 regions', async () => {
+    const stacker = jest.fn<Promise<string>, [string, string, string]>(
+      async (id) => `/tmp/output/${id}.png`,
+    );
     const input = makeInput({
       regions: [
         { page_number: 1, cropFilePath: '/tmp/r0.png' },
@@ -155,28 +158,11 @@ describe('composeOutput — INV-3: region count guard', () => {
         { page_number: 3, cropFilePath: '/tmp/r2.png' },
       ],
     });
-    await expect(composeOutput(input, forbiddenStacker())).rejects.toMatchObject({
-      code: 'COMPOSITION_FAILED',
-    });
-  });
-
-  it('error message for 3 regions names the count', async () => {
-    const input = makeInput({
-      regions: [
-        { page_number: 1, cropFilePath: '/tmp/r0.png' },
-        { page_number: 2, cropFilePath: '/tmp/r1.png' },
-        { page_number: 3, cropFilePath: '/tmp/r2.png' },
-      ],
-    });
-    let err: CompositionError | undefined;
-    try {
-      await composeOutput(input, forbiddenStacker());
-    } catch (e) {
-      err = e as CompositionError;
-    }
-    expect(err).toBeDefined();
-    expect(err!.message).toContain('3');
-    expect(err!.targetId).toBe('q_0001');
+    const result = await composeOutput(input, stacker);
+    expect(stacker).toHaveBeenCalledTimes(2);
+    expect(stacker).toHaveBeenCalledWith('q_0001_step1', '/tmp/r0.png', '/tmp/r1.png');
+    expect(stacker).toHaveBeenCalledWith('q_0001_step2', '/tmp/output/q_0001_step1.png', '/tmp/r2.png');
+    expect(result.localOutputPath).toBe('/tmp/output/q_0001_step2.png');
   });
 });
 

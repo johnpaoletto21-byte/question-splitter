@@ -3,9 +3,9 @@
  *
  * Adapter-internal types for the Gemini localization adapter.
  *
- * All provider-specific shapes live here and must NOT cross the adapter boundary.
- * The adapter translates these into the normalized LocalizationResult before
- * returning anything to the orchestrator (INV-9 / PO-8).
+ * Agent 3 now uses a sliding window approach: it receives 1-3 page images
+ * and identifies which questions from the known list appear in them,
+ * returning bounding boxes for each.
  */
 
 // ---------------------------------------------------------------------------
@@ -29,22 +29,23 @@ export interface GeminiLocalizerConfig {
 // ---------------------------------------------------------------------------
 
 /**
- * A single region as Gemini returns it for a localization call.
- * Contains page_number (which we cross-validate against Agent 1 output)
- * and the bbox_1000 bounding box.
+ * A single target entry as Gemini returns it for a window localization call.
+ * Agent 3 identifies which question appears on which image and provides bbox.
  */
-export interface GeminiRawLocalizationRegion {
-  page_number: number;
+export interface GeminiRawWindowTarget {
+  /** The question_number from the known question list (e.g. "1", "問3"). */
+  question_number: string;
+  /** Which image in the window (1, 2, or 3). */
+  image_position: number;
+  /** Normalized bounding box [y_min, x_min, y_max, x_max] on 0-1000 scale. */
   bbox_1000: number[];
 }
 
 /**
- * Top-level shape of the Gemini structured JSON output for one localization target.
- * Note: target_id is NOT in this shape — the parser carries it from the
- * incoming SegmentationTarget (Agent 2 must not invent or change target identity).
+ * Top-level shape of the Gemini structured JSON output for a window localization call.
  */
-export interface GeminiRawLocalizationOutput {
-  regions: GeminiRawLocalizationRegion[];
+export interface GeminiRawWindowLocalizationOutput {
+  targets: GeminiRawWindowTarget[];
   review_comment?: string;
 }
 

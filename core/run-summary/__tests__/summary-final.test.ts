@@ -36,18 +36,15 @@ function makeSegResult(): SegmentationResult {
       {
         target_id: 'q_0001',
         target_type: 'question',
-        regions: [{ page_number: 1 }],
       },
       {
         target_id: 'q_0002',
         target_type: 'question',
-        regions: [{ page_number: 2 }, { page_number: 3 }],
         review_comment: 'Agent 1 boundary ambiguous',
       },
       {
         target_id: 'q_0003',
         target_type: 'question',
-        regions: [{ page_number: 4 }],
       },
     ],
   };

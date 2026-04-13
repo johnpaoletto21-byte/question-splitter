@@ -8,7 +8,6 @@
  *   - Uses custom prompt when provided.
  *   - Falls back to DEFAULT_REVIEWER_PROMPT when snapshot is empty.
  *   - Includes extraction field definitions when provided.
- *   - Lists all pages.
  */
 
 import { buildReviewPrompt } from '../prompt';
@@ -39,12 +38,16 @@ const SEGMENTATION: SegmentationResult = {
     {
       target_id: 'q_0001',
       target_type: 'question',
-      regions: [{ page_number: 1 }],
+      question_number: '1',
+      question_text: 'What is X?',
+      sub_questions: [],
     },
     {
       target_id: 'q_0002',
       target_type: 'question',
-      regions: [{ page_number: 2 }, { page_number: 3 }],
+      question_number: '2',
+      question_text: 'Explain Y.',
+      sub_questions: ['(a)', '(b)'],
     },
   ],
 };
@@ -59,7 +62,7 @@ describe('buildReviewPrompt', () => {
     );
     expect(prompt).toContain('"target_id": "q_0001"');
     expect(prompt).toContain('"target_id": "q_0002"');
-    expect(prompt).toContain('Agent 1 Segmentation Output');
+    expect(prompt).toContain('Agent 1');
   });
 
   it('uses custom prompt snapshot when provided', () => {
@@ -83,18 +86,15 @@ describe('buildReviewPrompt', () => {
     expect(prompt).toContain(DEFAULT_REVIEWER_PROMPT.slice(0, 40));
   });
 
-  it('lists all pages in the prompt', () => {
-    const pages = [makePage(1), makePage(2), makePage(3)];
-    const prompt = buildReviewPrompt(pages, PROFILE, 'instructions', SEGMENTATION);
-    expect(prompt).toContain('Page 1');
-    expect(prompt).toContain('Page 2');
-    expect(prompt).toContain('Page 3');
-  });
-
-  it('includes target type and max regions from profile', () => {
+  it('includes target type from profile', () => {
     const prompt = buildReviewPrompt([makePage(1)], PROFILE, 'instructions', SEGMENTATION);
     expect(prompt).toContain('Target type: question');
-    expect(prompt).toContain('Maximum page regions per target: 2');
+  });
+
+  it('does not mention image_index or regions', () => {
+    const prompt = buildReviewPrompt([makePage(1)], PROFILE, 'instructions', SEGMENTATION);
+    expect(prompt).not.toContain('image_index');
+    expect(prompt).not.toContain('"regions"');
   });
 
   it('includes extraction field definitions when provided', () => {

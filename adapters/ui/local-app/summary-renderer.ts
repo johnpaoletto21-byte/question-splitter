@@ -107,7 +107,7 @@ function renderTargetRow(entry: RunSummaryTargetEntry, state: RunSummaryState): 
     <td>${esc(id)}</td>
     <td>${esc(entry.target_type)}</td>
     <td>${entry.page_numbers.join(', ')}</td>
-    <td>${entry.finish_page_number ?? '—'}</td>${statusRow}
+    <td>${entry.page_numbers.length > 0 ? Math.max(...entry.page_numbers) : '—'}</td>${statusRow}
     <td>${previewCell}</td>
     <td>${driveCell}</td>
     ${customCells}
@@ -168,7 +168,7 @@ function renderTargetCard(entry: RunSummaryTargetEntry, state: RunSummaryState):
     </div>
     <div class="card-preview">${previewImg}</div>
     <div class="card-meta">
-      <span class="card-pages">Pages: ${entry.page_numbers.join(', ')}${entry.finish_page_number ? ` (ends ${entry.finish_page_number})` : ''}</span>
+      <span class="card-pages">Pages: ${entry.page_numbers.join(', ')}</span>
       ${driveLink}
       ${customFields}
       <div class="card-comments" data-testid="summary-row-ai-comments-${esc(id)}">${comments || '—'}</div>
@@ -291,15 +291,12 @@ function renderDebugPanel(debug: DebugData): string {
 function renderAgent1Section(debug: DebugData): string {
   const chunkRows = debug.agent1ChunkResults.map((c) => {
     const targetRows = c.targets.length === 0
-      ? '<tr><td colspan="7" class="debug-note">No targets found in this chunk</td></tr>'
+      ? '<tr><td colspan="5" class="debug-note">No targets found in this chunk</td></tr>'
       : c.targets.map((t) => {
-          const pages = t.regions.map((r) => r.page_number).join(', ');
           return `<tr>
             <td>${esc(t.target_id)}</td>
             <td>${esc(t.question_number ?? '—')}</td>
             <td>${esc((t.question_text ?? '').slice(0, 80))}${(t.question_text?.length ?? 0) > 80 ? '...' : ''}</td>
-            <td>${pages}</td>
-            <td>${t.finish_page_number ?? '—'}</td>
             <td>${(t.sub_questions ?? []).join(', ') || '—'}</td>
             <td>${t.review_comment ? esc(t.review_comment) : '—'}</td>
           </tr>`;
@@ -311,7 +308,7 @@ function renderAgent1Section(debug: DebugData): string {
       <p><span class="debug-label">Context pages:</span> ${c.contextPageNumbers.join(', ')}</p>
       <table>
         <thead><tr>
-          <th>Target ID</th><th>Q#</th><th>Question Text</th><th>Region Pages</th><th>Finish Page</th><th>Sub-Qs</th><th>Review Comment</th>
+          <th>Target ID</th><th>Q#</th><th>Question Text</th><th>Sub-Qs</th><th>Review Comment</th>
         </tr></thead>
         <tbody>${targetRows}</tbody>
       </table>
@@ -332,11 +329,9 @@ function renderReviewSection(debug: DebugData): string {
       : '<span class="debug-pass">PASS</span>';
 
     const targetRows = r.targets.map((t) => {
-      const pages = t.regions.map((reg) => reg.page_number).join(', ');
       return `<tr>
         <td>${esc(t.target_id)}</td>
         <td>${esc(t.question_number ?? '—')}</td>
-        <td>${pages}</td>
         <td>${t.review_comment ? esc(t.review_comment) : '—'}</td>
       </tr>`;
     }).join('');
@@ -345,7 +340,7 @@ function renderReviewSection(debug: DebugData): string {
     <div class="sub-section">
       <h4>Chunk ${r.chunkIndex}: ${badge} (${r.targets.length} targets)</h4>
       <table>
-        <thead><tr><th>Target ID</th><th>Q#</th><th>Region Pages</th><th>Review Comment</th></tr></thead>
+        <thead><tr><th>Target ID</th><th>Q#</th><th>Review Comment</th></tr></thead>
         <tbody>${targetRows}</tbody>
       </table>
     </div>`;

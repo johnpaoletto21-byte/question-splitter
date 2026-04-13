@@ -29,23 +29,12 @@ export interface GeminiSegmenterConfig {
 // ---------------------------------------------------------------------------
 
 /**
- * A single region as Gemini returns it in structured output.
- * Uses image_index (1-based image position) instead of page_number.
- * The parser maps image_index back to page_number using the pages array.
- */
-export interface GeminiRawRegion {
-  image_index: number;
-}
-
-/**
- * A single target as Gemini returns it.
+ * A single target as Gemini returns it (question inventory — no regions).
  * Note: target_id is NOT in this shape — the parser assigns sequential IDs
  * based on reading order after the response arrives.
  */
 export interface GeminiRawTarget {
   target_type: string;
-  finish_image_index?: number;
-  regions: GeminiRawRegion[];
   extraction_fields?: Record<string, unknown>;
   review_comment?: string;
   question_number?: string;

@@ -19,28 +19,37 @@ import type { RunSummaryState, RunSummaryTargetEntry } from './types';
 import type { ExtractionFieldDefinition } from '../extraction-fields';
 
 /**
- * Builds a RunSummaryState from a normalized SegmentationResult.
+ * Builds a RunSummaryState from a normalized SegmentationResult plus
+ * optional localization results (for page_numbers).
  *
  * - Sets agent1_status = 'needs_review' when review_comment is present.
  * - Includes review_comment in the entry for UI display.
- * - Extracts page_numbers from regions[] to avoid re-parsing downstream.
+ * - page_numbers come from localizedResults if provided, otherwise empty.
  * - Preserves target order from the segmentation result (reading order).
  */
 export function buildRunSummaryFromSegmentation(
   result: SegmentationResult,
   extractionFields: ReadonlyArray<ExtractionFieldDefinition> = [],
+  localizedResults?: ReadonlyArray<LocalizationResult>,
 ): RunSummaryState {
+  // Build a lookup for page_numbers from localization results
+  const pageNumbersByTarget = new Map<string, number[]>();
+  if (localizedResults) {
+    for (const loc of localizedResults) {
+      pageNumbersByTarget.set(
+        loc.target_id,
+        loc.regions.map((r) => r.page_number),
+      );
+    }
+  }
+
   const targets: RunSummaryTargetEntry[] = result.targets.map((t) => {
     const entry: RunSummaryTargetEntry = {
       target_id: t.target_id,
       target_type: t.target_type,
-      page_numbers: t.regions.map((r) => r.page_number),
+      page_numbers: pageNumbersByTarget.get(t.target_id) ?? [],
       agent1_status: t.review_comment !== undefined ? 'needs_review' : 'ok',
     };
-
-    if (t.finish_page_number !== undefined) {
-      entry.finish_page_number = t.finish_page_number;
-    }
 
     if (t.extraction_fields !== undefined) {
       entry.extraction_fields = t.extraction_fields;

@@ -8,7 +8,6 @@
  */
 
 import type { PreparedPageImage } from '../../core/source-model/types';
-import type { SegmentationTarget } from '../../core/segmentation-contract/types';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -110,18 +109,49 @@ export function getOverlapZones(chunks: ReadonlyArray<ChunkWindow>): OverlapZone
 }
 
 // ---------------------------------------------------------------------------
-// Localization page selection (kept from old code, still needed per-target)
+// Localization sliding windows
 // ---------------------------------------------------------------------------
 
+export interface LocalizationWindow {
+  /** Zero-based window index. */
+  windowIndex: number;
+  /** Pages in this window (sorted by page_number, up to windowSize). */
+  pages: PreparedPageImage[];
+}
+
 /**
- * Filters the prepared-pages list to only pages referenced by the target's regions.
- * Used by the localizer to determine which page images to send for a single target.
+ * Builds overlapping sliding windows for localization.
+ *
+ * Creates windows of `windowSize` consecutive pages with a stride of 1,
+ * so each window overlaps with the next by (windowSize - 1) pages.
+ *
+ * Examples (windowSize=3):
+ *   4 pages → [1,2,3], [2,3,4]
+ *   6 pages → [1,2,3], [2,3,4], [3,4,5], [4,5,6]
+ *   2 pages → [1,2] (single window, fewer than windowSize)
+ *
+ * @param pages      All prepared page images (will be sorted by page_number).
+ * @param windowSize Number of pages per window (default 3).
+ * @returns          Array of LocalizationWindow objects.
  */
-export function selectLocalizationContextPages(
-  target: SegmentationTarget,
+export function buildLocalizationWindows(
   pages: ReadonlyArray<PreparedPageImage>,
-): PreparedPageImage[] {
+  windowSize: number = 3,
+): LocalizationWindow[] {
   const sorted = [...pages].sort(byPageNumber);
-  const wanted = new Set(target.regions.map((region) => region.page_number));
-  return sorted.filter((page) => wanted.has(page.page_number));
+  if (sorted.length === 0) return [];
+
+  // For short documents, single window with all pages
+  if (sorted.length <= windowSize) {
+    return [{ windowIndex: 0, pages: sorted }];
+  }
+
+  const windows: LocalizationWindow[] = [];
+  for (let i = 0; i <= sorted.length - windowSize; i++) {
+    windows.push({
+      windowIndex: i,
+      pages: sorted.slice(i, i + windowSize),
+    });
+  }
+  return windows;
 }

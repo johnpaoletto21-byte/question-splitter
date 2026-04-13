@@ -61,7 +61,6 @@ export async function reviewSegmentation(
   });
   const responseSchema = buildGeminiReviewSchema({
     extractionFields,
-    maxRegionsPerTarget: profile.max_regions_per_target,
   });
 
   const requestBody = buildGeminiRequest(promptText, pages, encodeFn, responseSchema);
@@ -73,7 +72,6 @@ export async function reviewSegmentation(
   return parseGeminiReviewResponse(
     parsedJson,
     runId,
-    pages,
     profile.max_regions_per_target,
     { extractionFields },
   );

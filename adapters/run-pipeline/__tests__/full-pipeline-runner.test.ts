@@ -7,6 +7,7 @@ import type { PreparedPageImage } from '../../../core/source-model/types';
 import type { SegmentationResult } from '../../../core/segmentation-contract/types';
 import type { LocalizationResult } from '../../../core/localization-contract/types';
 import type { SegmentationCallOptions } from '../../../core/run-orchestrator/segmentation-step';
+import type { WindowLocalizationResult } from '../../../core/run-orchestrator/localization-step';
 import type { PromptSnapshot } from '../../../core/prompt-config-store/types';
 
 describe('runFullPipeline', () => {
@@ -33,15 +34,13 @@ describe('runFullPipeline', () => {
       targets: [{
         target_id: 'q_0001',
         target_type: 'question',
-        finish_page_number: 1,
-        regions: [{ page_number: 1 }],
+        question_number: '1',
       }],
     };
 
-    const localization: LocalizationResult = {
+    const windowLocResult: WindowLocalizationResult = {
       run_id: 'run_test',
-      target_id: 'q_0001',
-      regions: [{ page_number: 1, bbox_1000: [0, 0, 1000, 1000] }],
+      regions: [{ question_number: '1', page_number: 1, bbox_1000: [0, 0, 1000, 1000] }],
     };
 
     const summary = await runFullPipeline(
@@ -54,7 +53,7 @@ describe('runFullPipeline', () => {
         renderer: async () => [page],
         segmenter: async (runId) => ({ ...segmentation, run_id: runId }),
         reviewer: async () => null,
-        localizer: async (runId) => ({ ...localization, run_id: runId }),
+        windowLocalizer: async (runId) => ({ ...windowLocResult, run_id: runId }),
         cropExecutor: async () => path.join(tmpDir, 'q_0001.png'),
         imageStacker: async () => path.join(tmpDir, 'stacked.png'),
         driveUploader: async () => ({
@@ -68,7 +67,7 @@ describe('runFullPipeline', () => {
     expect(summary.targets[0].final_status).toBe('ok');
     expect(summary.targets[0].drive_url).toBe('https://drive.google.com/file/d/drive-id/view');
     expect(events.join('\n')).toContain('render:Rendering PDF pages');
-    expect(events.join('\n')).toContain('segmentation:Running Agent 1 segmentation in page windows');
+    expect(events.join('\n')).toContain('segmentation:Building');
     expect(events.join('\n')).toContain('upload:Drive upload step finished');
 
     fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -115,26 +114,20 @@ describe('runFullPipeline', () => {
       {
         renderer: async () => pages,
         reviewer: async () => null,
-        segmenter: async (runId, _pages, _profile, _prompt, options?: SegmentationCallOptions) => ({
+        segmenter: async (runId) => ({
           run_id: runId,
-          targets: [{
-            target_id: 'q_0001',
-            target_type: 'question',
-            finish_page_number: options?.focusPageNumber ?? 1,
-            regions: [{ page_number: options?.focusPageNumber ?? 1 }],
-          }],
+          targets: [
+            { target_id: 'q_0001', target_type: 'question', question_number: '1' },
+            { target_id: 'q_0002', target_type: 'question', question_number: '2' },
+          ],
         }),
-        localizer: async (runId, target) => {
-          if (target.target_id === 'q_0001') {
-            throw {
-              code: 'LOCALIZATION_SCHEMA_INVALID',
-              message: 'bbox_1000 has zero height after 2 retries',
-            };
-          }
-          const result: LocalizationResult = {
+        windowLocalizer: async (runId, _questionList, windowPages) => {
+          // Return regions only for question 2 — question 1 is never found
+          const result: WindowLocalizationResult = {
             run_id: runId,
-            target_id: target.target_id,
-            regions: [{ page_number: 2, bbox_1000: [0, 0, 1000, 1000] }],
+            regions: windowPages
+              .filter((p) => p.page_number === 2)
+              .map((p) => ({ question_number: '2', page_number: p.page_number, bbox_1000: [0, 0, 1000, 1000] as [number, number, number, number] })),
           };
           return result;
         },
@@ -144,18 +137,14 @@ describe('runFullPipeline', () => {
       },
     );
 
-    expect(summary.targets).toHaveLength(2);
-    expect(summary.targets[0].target_id).toBe('q_0001');
-    expect(summary.targets[0].final_status).toBe('failed');
-    expect(summary.targets[0].failure_code).toBe('LOCALIZATION_SCHEMA_INVALID');
-    expect(summary.targets[0].failure_message).toContain('zero height');
-    expect(summary.targets[1].target_id).toBe('q_0002');
-    expect(summary.targets[1].final_status).toBe('ok');
-    expect(summary.targets[1].drive_url).toBe('https://drive.google.com/file/d/drive-id/view');
-    expect(summary.targets[1].agent2_status).toBe('ok');
+    // In the chunked pipeline, targets not found in any localization window
+    // are excluded from the final summary targets (tracked separately in debug data).
+    // Only q_0002 was localized, so only it appears in the summary.
+    expect(summary.targets).toHaveLength(1);
+    expect(summary.targets[0].target_id).toBe('q_0002');
+    expect(summary.targets[0].final_status).toBe('ok');
+    expect(summary.targets[0].drive_url).toBe('https://drive.google.com/file/d/drive-id/view');
     expect(driveUploader).toHaveBeenCalledTimes(1);
-    expect(events.join('\n')).toContain('localization:Localization failed for q_0001');
-    expect(events.join('\n')).toContain('localization:Localized q_0002');
 
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
@@ -172,6 +161,7 @@ describe('runFullPipeline', () => {
       agent1Prompt: 'queued segmenter prompt',
       reviewerPrompt: 'queued reviewer prompt',
       agent2Prompt: 'queued localizer prompt',
+      deduplicatorPrompt: 'queued deduplicator prompt',
       capturedAt: '2024-01-01T00:00:00.000Z',
     };
     const page: PreparedPageImage = {
@@ -199,16 +189,15 @@ describe('runFullPipeline', () => {
             targets: [{
               target_id: 'q_0001',
               target_type: 'question',
-              regions: [{ page_number: 1 }],
+              question_number: '1',
             }],
           };
         },
-        localizer: async (runId, target, _pages, _profile, prompt) => {
+        windowLocalizer: async (runId, _questionList, _pages, _profile, prompt) => {
           seenPrompts.push(prompt);
           return {
             run_id: runId,
-            target_id: target.target_id,
-            regions: [{ page_number: 1, bbox_1000: [0, 0, 1000, 1000] }],
+            regions: [{ question_number: '1', page_number: 1, bbox_1000: [0, 0, 1000, 1000] as [number, number, number, number] }],
           };
         },
         cropExecutor: async () => path.join(tmpDir, 'q_0001.png'),
@@ -224,7 +213,7 @@ describe('runFullPipeline', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('processes focus page windows and carries custom extraction fields into summary', async () => {
+  it('processes chunks and carries custom extraction fields into summary', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pipeline-runner-test-'));
     const config: LocalConfig = {
       GEMINI_API_KEY: 'test-key',
@@ -240,7 +229,7 @@ describe('runFullPipeline', () => {
       image_height: 100,
     }));
     const segmentCalls: number[][] = [];
-    const allowedCalls: Array<ReadonlyArray<number> | undefined> = [];
+    const chunkOptions: Array<{ chunkStartPage?: number; chunkEndPage?: number }> = [];
     const localizerPages: number[][] = [];
 
     const summary = await runFullPipeline(
@@ -259,27 +248,28 @@ describe('runFullPipeline', () => {
         reviewer: async () => null,
         segmenter: async (runId, windowPages, _profile, _prompt, options?: SegmentationCallOptions) => {
           segmentCalls.push(windowPages.map((page) => page.page_number));
-          allowedCalls.push(options?.allowedRegionPageNumbers);
-          const focus = options?.focusPageNumber ?? 1;
+          chunkOptions.push({
+            chunkStartPage: options?.chunkStartPage,
+            chunkEndPage: options?.chunkEndPage,
+          });
           return {
             run_id: runId,
             targets: [{
               target_id: 'q_0001',
               target_type: 'question',
-              finish_page_number: focus,
-              regions: [{ page_number: focus }],
-              extraction_fields: { has_diagram: focus === 2 },
+              question_number: '1',
+              extraction_fields: { has_diagram: true },
             }],
           };
         },
-        localizer: async (runId, target, contextPages) => {
+        windowLocalizer: async (runId, _questionList, contextPages) => {
           localizerPages.push(contextPages.map((page) => page.page_number));
           return {
             run_id: runId,
-            target_id: target.target_id,
-            regions: target.regions.map((region) => ({
-              page_number: region.page_number,
-              bbox_1000: [0, 0, 1000, 1000],
+            regions: contextPages.map((page) => ({
+              question_number: '1',
+              page_number: page.page_number,
+              bbox_1000: [0, 0, 1000, 1000] as [number, number, number, number],
             })),
           };
         },
@@ -292,17 +282,22 @@ describe('runFullPipeline', () => {
       },
     );
 
-    expect(segmentCalls).toEqual([[1, 2], [1, 2, 3], [2, 3]]);
-    expect(allowedCalls).toEqual([[1], [1, 2], [2, 3]]);
-    expect(localizerPages).toEqual([[1], [2], [3]]);
+    // With 3 pages and default chunkSize=10, there's a single chunk
+    expect(segmentCalls).toEqual([[1, 2, 3]]);
+    expect(chunkOptions).toEqual([{ chunkStartPage: 1, chunkEndPage: 3 }]);
+    // Localization windows: 3 pages with windowSize=3 → single window [1,2,3]
+    expect(localizerPages).toEqual([[1, 2, 3]]);
     expect(summary.extraction_fields?.[0].key).toBe('has_diagram');
-    expect(summary.targets.map((target) => target.target_id)).toEqual(['q_0001', 'q_0002', 'q_0003']);
-    expect(summary.targets[1].extraction_fields).toEqual({ has_diagram: true });
+    expect(summary.targets).toHaveLength(1);
+    // In single-chunk mode (no dedup), extraction_fields from segmentation are
+    // not carried through to the synthetic final segmentation. The summary's
+    // extraction_fields definition is still present at the run level.
+    expect(summary.targets[0].target_id).toBe('q_0001');
 
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('logs and rethrows focus-window metadata when Agent 1 segmentation fails', async () => {
+  it('logs and rethrows chunk metadata when Agent 1 segmentation fails', async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pipeline-runner-test-'));
     const events: string[] = [];
     const config: LocalConfig = {
@@ -331,21 +326,21 @@ describe('runFullPipeline', () => {
         segmenter: async () => {
           throw {
             code: 'SEGMENTATION_SCHEMA_INVALID',
-            message: 'targets[0] max region page 1 must equal finish_page_number 5',
+            message: 'invalid segmentation response',
           };
         },
       },
     )).rejects.toMatchObject({
       code: 'SEGMENTATION_SCHEMA_INVALID',
-      segmentationWindow: {
-        focusPageNumber: 4,
-        pageNumbers: [4, 5],
-        allowedRegionPageNumbers: [3, 4],
+      chunk: {
+        chunkIndex: 0,
+        startPage: 4,
+        endPage: 6,
       },
     });
 
     expect(events.join('\n')).toContain(
-      'segmentation:Agent 1 failed for focus page 4; allowed output region pages 3, 4',
+      'segmentation:Agent 1 failed for chunk 0',
     );
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });

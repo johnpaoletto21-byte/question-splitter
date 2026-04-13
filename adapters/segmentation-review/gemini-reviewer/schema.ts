@@ -9,11 +9,9 @@ import { buildGeminiSegmentationSchema } from '../../segmentation/gemini-segment
 
 export function buildGeminiReviewSchema(input: {
   extractionFields?: ReadonlyArray<ExtractionFieldDefinition>;
-  maxRegionsPerTarget?: number;
 } = {}): Record<string, unknown> {
   const segSchema = buildGeminiSegmentationSchema({
     extractionFields: input.extractionFields,
-    maxRegionsPerTarget: input.maxRegionsPerTarget,
   }) as Record<string, Record<string, Record<string, unknown>>>;
 
   const targetsSchema = segSchema['properties']['targets'];

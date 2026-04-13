@@ -36,12 +36,10 @@ const MOCK_RESULT: SegmentationResult = {
     {
       target_id: 'q_0001',
       target_type: 'question',
-      regions: [{ page_number: 1 }],
     },
     {
       target_id: 'q_0002',
       target_type: 'question',
-      regions: [{ page_number: 2 }, { page_number: 3 }],
       review_comment: 'Spans two pages',
     },
   ],
@@ -60,6 +58,7 @@ describe('runSegmentationStep', () => {
       pages,
       PROFILE,
       '',
+      {},
     );
   });
 
@@ -86,7 +85,7 @@ describe('runSegmentationStep', () => {
     const snapshot = 'CUSTOM PROMPT TEXT';
     await runSegmentationStep(MOCK_RESULT.run_id, [makePage(1)], PROFILE, snapshot, segmenter);
     expect(segmenter).toHaveBeenCalledWith(
-      expect.any(String), expect.any(Array), expect.any(Object), snapshot,
+      expect.any(String), expect.any(Array), expect.any(Object), snapshot, {},
     );
   });
 

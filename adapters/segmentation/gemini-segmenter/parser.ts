@@ -4,11 +4,13 @@
  * Parses and translates the raw Gemini structured output into the
  * normalized SegmentationResult contract.
  *
+ * Agent 1 now produces a question inventory (no regions/page references).
+ *
  * Responsibilities:
  *   1. Validate the raw JSON structure from Gemini.
  *   2. Assign sequential target_id values in reading order (q_0001, q_0002, …).
  *   3. Combine with run_id to produce a complete SegmentationResult.
- *   4. Pass through new fields: question_number, question_text, sub_questions.
+ *   4. Pass through fields: question_number, question_text, sub_questions.
  *
  * Nothing from this file should reach outside the adapter boundary
  * in raw form — only the normalized SegmentationResult is returned.
@@ -16,35 +18,11 @@
 
 import { validateSegmentationResult } from '../../../core/segmentation-contract/validation';
 import type { SegmentationResult } from '../../../core/segmentation-contract/types';
-import type { PreparedPageImage } from '../../../core/source-model/types';
 import type { ExtractionFieldDefinition } from '../../../core/extraction-fields';
 import type { GeminiRawSegmentationOutput, GeminiRawTarget } from './types';
 
 export interface ParseGeminiSegmentationOptions {
   extractionFields?: ReadonlyArray<ExtractionFieldDefinition>;
-}
-
-// ---------------------------------------------------------------------------
-// Image-index → page-number mapping
-// ---------------------------------------------------------------------------
-
-/**
- * Maps a 1-based image index to the corresponding page_number using the
- * ordered pages array that was sent to Gemini.
- *
- * @throws Error if the index is out of range.
- */
-function imageIndexToPageNumber(imageIndex: number, pages: ReadonlyArray<PreparedPageImage>): number {
-  const coerced = typeof imageIndex === 'string' ? Number(imageIndex) : imageIndex;
-  if (!Number.isInteger(coerced) || coerced < 1 || coerced > pages.length) {
-    throw {
-      code: 'SEGMENTATION_SCHEMA_INVALID',
-      message:
-        `image_index ${imageIndex} is out of range — ` +
-        `expected 1..${pages.length} (${pages.length} images were provided)`,
-    };
-  }
-  return pages[coerced - 1].page_number;
 }
 
 // ---------------------------------------------------------------------------
@@ -89,51 +67,31 @@ function assertRawShape(raw: unknown): asserts raw is GeminiRawSegmentationOutpu
 
 /**
  * Parses the raw Gemini structured JSON output and returns a normalized
- * SegmentationResult.
- *
- * Gemini returns image_index (1-based image position) instead of page_number.
- * This parser maps each image_index back to the correct page_number using
- * the ordered pages array that was sent to Gemini.
+ * SegmentationResult (question inventory — no regions).
  *
  * @param raw      The parsed JSON object from Gemini's response body.
  * @param runId    The run_id for the current orchestrator run.
- * @param pages    The ordered PreparedPageImage[] sent to Gemini (for index→page mapping).
- * @param maxRegionsPerTarget  Max regions per target (from active profile).
  * @returns        Validated, normalized SegmentationResult.
  * @throws         Error or SegmentationValidationError on invalid response.
  */
 export function parseGeminiSegmentationResponse(
   raw: unknown,
   runId: string,
-  pages: ReadonlyArray<PreparedPageImage>,
-  maxRegionsPerTarget: number = 10,
   options: ParseGeminiSegmentationOptions = {},
 ): SegmentationResult {
   assertRawShape(raw);
 
-  // Assign sequential target_id values in the order Gemini returned them
-  // (reading order). The ID encodes position so downstream sorting is stable.
   const targets = (raw.targets as GeminiRawTarget[]).map((t, i) => {
-    // Map image_index → page_number using the pages array.
-    const regions = t.regions.map((r) => ({
-      page_number: imageIndexToPageNumber(r.image_index, pages),
-    }));
     const target: Record<string, unknown> = {
       target_id: makeTargetId(i),
       target_type: t.target_type,
-      regions,
     };
-    const rawFinish = t.finish_image_index;
-    if (rawFinish !== undefined) {
-      target['finish_page_number'] = imageIndexToPageNumber(rawFinish, pages);
-    }
     if (t.extraction_fields !== undefined) {
       target['extraction_fields'] = t.extraction_fields;
     }
     if (typeof t.review_comment === 'string') {
       target['review_comment'] = t.review_comment;
     }
-    // New fields
     if (typeof t.question_number === 'string') {
       target['question_number'] = t.question_number;
     }
@@ -148,8 +106,7 @@ export function parseGeminiSegmentationResponse(
 
   const normalized = { run_id: runId, targets };
 
-  // Run full contract validation.
-  return validateSegmentationResult(normalized, maxRegionsPerTarget, {
+  return validateSegmentationResult(normalized, {
     extractionFields: options.extractionFields,
   });
 }

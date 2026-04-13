@@ -4,7 +4,7 @@
  * Adapter-layer glue for the full local PDF-to-Drive pipeline.
  *
  * New flow:
- *   Render → [per chunk: Segment → Review → Localize] → Dedup → Crop → Compose → Upload
+ *   Render → [per chunk: Segment → Review → Localize (sliding windows)] → Dedup → Crop → Compose → Upload
  */
 
 import * as fs from 'fs';
@@ -12,7 +12,7 @@ import type { LocalConfig } from '../config/local-config/types';
 import { renderPdfSource } from '../source-preparation/pdf-renderer';
 import { segmentPages } from '../segmentation/gemini-segmenter';
 import { reviewSegmentation } from '../segmentation-review/gemini-reviewer';
-import { localizeTarget } from '../localization/gemini-localizer';
+import { localizeWindow } from '../localization/gemini-localizer';
 import { deduplicateTargets } from '../deduplication/gemini-deduplicator';
 import { uploadToDrive } from '../upload/google-drive';
 import { makeCanvasCropExecutor, makeCanvasImageStacker } from '../image-processing';
@@ -25,12 +25,13 @@ import {
   runCropStep,
   runCompositionStep,
   runUploadStep,
+  assembleLocalizationResults,
 } from '../../core/run-orchestrator';
 import type {
   PageRenderer,
   Segmenter,
   SegmentationReviewer,
-  Localizer,
+  WindowLocalizer,
   Deduplicator,
   CropExecutor,
   ImageStackerFn,
@@ -43,7 +44,6 @@ import type {
   DeduplicationChunkInput,
   DeduplicationTargetInput,
   DeduplicationResult,
-  DeduplicatedTarget,
 } from '../../core/deduplication-contract/types';
 import {
   buildRunSummaryFromSegmentation,
@@ -54,10 +54,11 @@ import type { RunSummaryState } from '../../core/run-summary/types';
 import type { FinalResultRow } from '../../core/result-model/types';
 import type { PromptSnapshot } from '../../core/prompt-config-store/types';
 import type { ExtractionFieldDefinition } from '../../core/extraction-fields';
+import type { WindowLocalizationResult } from '../../core/run-orchestrator/localization-step';
 import {
   buildChunkedPageWindows,
+  buildLocalizationWindows,
   getOverlapZones,
-  selectLocalizationContextPages,
 } from './page-windows';
 import type { ChunkWindow } from './page-windows';
 import type { DebugData, SegmentationChunkDebug, ReviewChunkDebug } from '../../core/run-summary/debug-types';
@@ -85,7 +86,7 @@ export interface RunFullPipelineDependencies {
   renderer?: PageRenderer;
   segmenter?: Segmenter;
   reviewer?: SegmentationReviewer;
-  localizer?: Localizer;
+  windowLocalizer?: WindowLocalizer;
   deduplicator?: Deduplicator;
   cropExecutor?: CropExecutor;
   imageStacker?: ImageStackerFn;
@@ -189,24 +190,24 @@ export async function runFullPipeline(
     opts,
   ));
 
-  // Build localizer function
-  const localizer = deps.localizer ?? ((
+  // Build window localizer function
+  const windowLocalizer = deps.windowLocalizer ?? ((
     runId,
-    target,
-    pages,
+    questionList,
+    windowPages,
     profile,
     promptSnapshot,
-  ) => localizeTarget(
+  ) => localizeWindow(
     runId,
-    target,
-    pages,
+    questionList,
+    windowPages,
     profile,
     promptSnapshot,
     { apiKey: input.config.GEMINI_API_KEY },
   ));
 
   // ---------------------------------------------------------------------------
-  // Phase 1: Per-chunk processing (Segment → Review → Localize)
+  // Phase 1: Per-chunk processing (Segment → Review → Localize via sliding windows)
   // ---------------------------------------------------------------------------
 
   emit(input.onLog, 'segmentation', `Building ${chunkSize}-page chunks with ${chunkOverlap}-page overlap`);
@@ -226,7 +227,7 @@ export async function runFullPipeline(
       `Chunk ${chunk.chunkIndex}: pages ${chunk.startPage}-${chunk.endPage}`,
     );
 
-    // Agent 1: Segment this chunk
+    // Agent 1: Segment this chunk (produces question inventory, no regions)
     let segmentation: SegmentationResult;
     try {
       segmentation = await runSegmentationStep(
@@ -296,38 +297,65 @@ export async function runFullPipeline(
       targets: reviewedSegmentation.targets,
     });
 
-    // Agent 3: Localize each target in this chunk
-    const chunkLocalized: LocalizationResult[] = [];
-    for (const target of reviewedSegmentation.targets) {
+    // Agent 3: Localize via sliding windows
+    emit(input.onLog, 'localization', `Chunk ${chunk.chunkIndex}: building localization windows`);
+    const locWindows = buildLocalizationWindows(chunk.pages);
+    emit(input.onLog, 'localization', `Chunk ${chunk.chunkIndex}: ${locWindows.length} window(s)`);
+
+    const windowResults: WindowLocalizationResult[] = [];
+    for (const win of locWindows) {
       try {
-        const contextPages = selectLocalizationContextPages(target, chunk.pages);
-        const result = await localizer(
+        const result = await windowLocalizer(
           rendered.run_id,
-          target,
-          contextPages,
+          reviewedSegmentation.targets,
+          win.pages,
           rendered.activeProfile,
           rendered.promptSnapshot.agent2Prompt,
         );
-        chunkLocalized.push(result);
-        allLocalized.push(result);
-        emit(input.onLog, 'localization', `Chunk ${chunk.chunkIndex}: localized ${target.target_id}`);
+        windowResults.push(result);
+        emit(
+          input.onLog,
+          'localization',
+          `Chunk ${chunk.chunkIndex}, window ${win.windowIndex}: found ${result.regions.length} region(s)`,
+        );
       } catch (err) {
         const message = formatUnknownError(err);
         emit(
           input.onLog,
           'localization',
-          `Chunk ${chunk.chunkIndex}: localization failed for ${target.target_id}: ${message}`,
+          `Chunk ${chunk.chunkIndex}, window ${win.windowIndex}: localization failed: ${message}`,
         );
+        // Window failures are not fatal — other windows may still cover the same questions
+      }
+    }
+
+    // Assemble per-window results into per-target LocalizationResults
+    const chunkLocalized = assembleLocalizationResults(
+      rendered.run_id,
+      reviewedSegmentation.targets,
+      windowResults,
+      locWindows,
+    );
+
+    // Track targets that weren't found in any window
+    const localizedTargetIds = new Set(chunkLocalized.map((l) => l.target_id));
+    for (const target of reviewedSegmentation.targets) {
+      if (!localizedTargetIds.has(target.target_id)) {
         localizationFailureRows.push({
           target_id: target.target_id,
-          source_pages: target.regions.map((r) => r.page_number),
+          source_pages: [],
           output_file_name: '',
           status: 'failed',
-          failure_code: errorCode(err, 'LOCALIZATION_FAILED'),
-          failure_message: message,
+          failure_code: 'LOCALIZATION_NOT_FOUND',
+          failure_message: `Question ${target.question_number ?? target.target_id} not found in any localization window`,
         });
       }
     }
+
+    for (const loc of chunkLocalized) {
+      allLocalized.push(loc);
+    }
+    emit(input.onLog, 'localization', `Chunk ${chunk.chunkIndex}: localized ${chunkLocalized.length} target(s)`);
 
     // Build dedup input for this chunk
     const chunkTargets: DeduplicationTargetInput[] = chunkLocalized.map((loc) => {
@@ -338,7 +366,6 @@ export async function runFullPipeline(
         question_number: segTarget?.question_number,
         question_text: segTarget?.question_text,
         sub_questions: segTarget?.sub_questions,
-        finish_page_number: segTarget?.finish_page_number,
         regions: loc.regions,
         extraction_fields: segTarget?.extraction_fields,
         review_comment: segTarget?.review_comment,
@@ -426,13 +453,10 @@ export async function runFullPipeline(
   const finalSegmentation: SegmentationResult = {
     run_id: rendered.run_id,
     targets: finalLocalized.map((loc) => {
-      // Try to find the dedup target for metadata
       const dedupTarget = dedupResult?.targets.find((t) => t.target_id === loc.target_id);
       return {
         target_id: loc.target_id,
         target_type: dedupTarget?.target_type ?? 'question',
-        finish_page_number: dedupTarget?.finish_page_number ?? Math.max(...loc.regions.map((r) => r.page_number)),
-        regions: loc.regions.map((r) => ({ page_number: r.page_number })),
         question_number: dedupTarget?.question_number,
         question_text: dedupTarget?.question_text,
         sub_questions: dedupTarget?.sub_questions,
@@ -441,7 +465,7 @@ export async function runFullPipeline(
     }),
   };
 
-  let summary = buildRunSummaryFromSegmentation(finalSegmentation, extractionFields);
+  let summary = buildRunSummaryFromSegmentation(finalSegmentation, extractionFields, finalLocalized);
 
   for (const result of finalLocalized) {
     summary = applyLocalizationToSummary(summary, result);

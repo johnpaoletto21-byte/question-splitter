@@ -30,11 +30,8 @@ export interface RunSummaryTargetEntry {
   /** Target type from the segmentation contract (e.g. 'question'). */
   target_type: string;
 
-  /** Ordered list of page numbers covered by this target (from regions[]). */
+  /** Ordered list of page numbers covered by this target (from localization). */
   page_numbers: number[];
-
-  /** Page where the target's final visible content ends. */
-  finish_page_number?: number;
 
   /** Run-scoped custom boolean values produced by Agent 1. */
   extraction_fields?: Record<string, boolean>;

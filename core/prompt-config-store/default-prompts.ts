@@ -15,14 +15,10 @@ Return them as an ordered list in reading order: top of the first page first, bo
 - **question_number**: The question number as printed in the document (usually at the top-left of the question). Examples: "1", "2", "問3", "Q4". This is critical — always capture the exact number/label shown.
 - **question_text**: The first ~200 characters of the question body text. If the question includes diagrams or figures, note them inline with square brackets, e.g. "[diagram on the right]", "[graph below]", "[figure showing a triangle]". This text helps downstream agents identify and deduplicate questions.
 - **sub_questions**: If the question has sub-parts like (1), (2), (3), (a), (b), ①, ②, list the sub-part labels. All sub-parts belong to the same parent question — do NOT create separate targets for sub-parts.
-- **regions**: List the image indices where this question appears using image_index. Use the Image number (1, 2, 3...) from the "Images provided" list — NOT document page numbers. A question may span multiple images.
-- **finish_image_index**: The image index (from the "Images provided" list) where this question's final visible content ends.
 
 ## Rules
 - Each distinct numbered question header begins a new target.
 - All sub-parts (1)(2)(a)(b)①② etc. belong to the same parent target.
-- Figures, diagrams, graphs, or tables that follow a question belong to that question's target, even if on the next image.
-- Return only image indices for each region — no crop dimensions or bounding boxes.
 - Every question that appears in the exam must be represented exactly once.
 - Use the target_type supplied in the run context for every target.
 - If you are uncertain about a target boundary, add a brief review_comment.
@@ -37,9 +33,9 @@ Analyze the images and return the complete ordered list of targets.`;
 export const DEFAULT_REVIEWER_PROMPT = `You are Agent 2: Segmentation Reviewer for an exam-paper processing pipeline.
 
 ## Task
-Review and clean the segmentation output produced by Agent 1. You receive:
+Review and clean the question list produced by Agent 1. You receive:
 1. The page images for this chunk.
-2. Agent 1's segmentation result as a JSON targets array.
+2. Agent 1's question list as a JSON targets array.
 
 Your job is to remove non-questions and fix grouping errors.
 
@@ -57,7 +53,6 @@ Remove any target that is actually:
 - If Agent 1 merged multiple distinct questions into one target, split them.
 - Verify question_number values are correct by checking the images.
 - Ensure sub_questions lists are accurate.
-- Verify image_index values are correct — each region's image_index should match the Image number where that question content actually appears.
 
 ## What NOT to do
 - Do not add new questions that Agent 1 did not find. Only clean and correct what was given.
@@ -74,14 +69,13 @@ Do not include a targets array.
 Return: {"verdict": "corrected", "targets": [...]}
 - Return targets in reading order.
 - Use the target_type from the run context.
-- Use image_index (from the "Images provided" list) for regions and finish_image_index — NOT document page numbers.
 - Add a review_comment on corrected targets explaining what you changed.`;
 
 export const DEFAULT_AGENT2_PROMPT = `You are Agent 3: Region Localizer for an exam-paper processing pipeline.
 
 ## Task
-Locate the exact bounding box of a single target within the provided page image or images.
-Return one bounding box for each page region listed in the run context.
+You receive a small set of page images (up to 3) and a list of known questions from this exam.
+For each question that is visible in these images, return its bounding box.
 
 ## Bounding box format
 Return bbox_1000 as [y_min, x_min, y_max, x_max] on a 0-1000 normalized scale.
@@ -100,15 +94,16 @@ Return bbox_1000 as [y_min, x_min, y_max, x_max] on a 0-1000 normalized scale.
 - If a diagram extends to the edge of the page, set that edge of the bbox to 0 or 1000 as appropriate.
 
 ## Rules
-- Return exactly one region entry per page listed in the run context.
-- Do not add extra regions or change the page order.
-- The page_number in each region entry must match the page number given in the run context.
+- For each question visible in these images, return one entry per image it appears on.
+- Use image_position (1, 2, or 3) to indicate which image the bounding box is on: 1 = first image, 2 = second image, 3 = third image.
+- Use the question_number from the provided question list to identify each question.
+- A question that spans two images should have two entries (one per image).
+- If no questions appear in these images, return an empty targets array.
 - Tightly bound the target content: include the question number, all sub-parts, and any associated diagrams or tables.
 - Exclude surrounding whitespace where possible, but NEVER clip diagrams or figures.
-- If the target is partially cut off or the boundary is ambiguous, include a review_comment.
-- If a listed page region appears to contain no visible part of the target, still return the best visible content extent for that page and include a review_comment; do not return an empty bbox.
+- If a target boundary is ambiguous, include a review_comment.
 
-Analyze the image or images and return the bounding box location of this target.`;
+Analyze the images and return bounding boxes for every visible question.`;
 
 export const DEFAULT_DEDUPLICATOR_PROMPT = `You are Agent 4: Question Deduplicator for an exam-paper processing pipeline.
 

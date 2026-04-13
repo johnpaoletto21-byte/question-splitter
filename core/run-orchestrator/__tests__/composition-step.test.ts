@@ -23,7 +23,7 @@ import type { CropTargetProfile } from '../../crop-target-profile/types';
 
 const PROFILE: CropTargetProfile = {
   target_type: 'question',
-  max_regions_per_target: 2,
+  max_regions_per_target: 10,
   composition_mode: 'top_to_bottom',
 };
 
@@ -213,7 +213,7 @@ describe('runCompositionStep — 2-region composition', () => {
     expect(rows[0].status).toBe('ok');
     expect(stacker).toHaveBeenCalledTimes(1);
     expect(stacker).toHaveBeenCalledWith(
-      'q_0001',
+      'q_0001_step1',
       '/tmp/crops/q_0001_r0.png',
       '/tmp/crops/q_0001_r1.png',
     );
@@ -243,8 +243,8 @@ describe('runCompositionStep — 2-region composition', () => {
 // CompositionError continuation (INV-8 — triggered via 3-region guard)
 // ---------------------------------------------------------------------------
 
-describe('runCompositionStep — CompositionError continuation (INV-8)', () => {
-  it('emits failed row for 3-region target and continues to next target', async () => {
+describe('runCompositionStep — 3-region chained composition', () => {
+  it('chains stacker calls for 3-region target and emits ok row', async () => {
     const stacker = jest.fn<Promise<string>, [string, string, string]>(
       async (id) => `/tmp/output/${id}.png`,
     );
@@ -258,11 +258,20 @@ describe('runCompositionStep — CompositionError continuation (INV-8)', () => {
     );
 
     expect(rows).toHaveLength(2);
-    expect(rows[0].status).toBe('failed');
+    // 3-region target is composed via two chained stacker calls
+    expect(rows[0].status).toBe('ok');
     expect(rows[0].target_id).toBe('q_0001');
-    expect(rows[0].output_file_name).toBe('');
-    // Stacker must not have been called for the 3-region target (guard fires before I/O).
-    expect(stacker).not.toHaveBeenCalledWith('q_0001', expect.any(String), expect.any(String));
+    // Stacker called twice: step1 (r0+r1) and step2 (result+r2)
+    expect(stacker).toHaveBeenCalledWith(
+      'q_0001_step1',
+      '/tmp/crops/q_0001_r0.png',
+      '/tmp/crops/q_0001_r1.png',
+    );
+    expect(stacker).toHaveBeenCalledWith(
+      'q_0001_step2',
+      '/tmp/output/q_0001_step1.png',
+      '/tmp/crops/q_0001_r2.png',
+    );
     // Second target should succeed.
     expect(rows[1].status).toBe('ok');
     expect(rows[1].target_id).toBe('q_0002');
