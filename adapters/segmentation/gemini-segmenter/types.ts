@@ -30,10 +30,11 @@ export interface GeminiSegmenterConfig {
 
 /**
  * A single region as Gemini returns it in structured output.
- * Only page_number — no bbox (that is Agent 3 scope).
+ * Uses image_index (1-based image position) instead of page_number.
+ * The parser maps image_index back to page_number using the pages array.
  */
 export interface GeminiRawRegion {
-  page_number: number;
+  image_index: number;
 }
 
 /**
@@ -43,7 +44,7 @@ export interface GeminiRawRegion {
  */
 export interface GeminiRawTarget {
   target_type: string;
-  finish_page_number?: number;
+  finish_image_index?: number;
   regions: GeminiRawRegion[];
   extraction_fields?: Record<string, unknown>;
   review_comment?: string;

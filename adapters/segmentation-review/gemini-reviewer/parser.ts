@@ -7,10 +7,27 @@
 
 import { validateSegmentationResult } from '../../../core/segmentation-contract/validation';
 import type { SegmentationResult } from '../../../core/segmentation-contract/types';
+import type { PreparedPageImage } from '../../../core/source-model/types';
 import type { ExtractionFieldDefinition } from '../../../core/extraction-fields';
 
 export interface ParseGeminiReviewOptions {
   extractionFields?: ReadonlyArray<ExtractionFieldDefinition>;
+}
+
+/**
+ * Maps a 1-based image index to the corresponding page_number.
+ */
+function imageIndexToPageNumber(imageIndex: unknown, pages: ReadonlyArray<PreparedPageImage>): number {
+  const coerced = typeof imageIndex === 'string' ? Number(imageIndex) : Number(imageIndex);
+  if (!Number.isInteger(coerced) || coerced < 1 || coerced > pages.length) {
+    throw {
+      code: 'SEGMENTATION_SCHEMA_INVALID',
+      message:
+        `image_index ${imageIndex} is out of range — ` +
+        `expected 1..${pages.length} (${pages.length} images were provided)`,
+    };
+  }
+  return pages[coerced - 1].page_number;
 }
 
 function isObject(v: unknown): v is Record<string, unknown> {
@@ -24,6 +41,7 @@ function makeTargetId(index: number): string {
 export function parseGeminiReviewResponse(
   raw: unknown,
   runId: string,
+  pages: ReadonlyArray<PreparedPageImage>,
   maxRegionsPerTarget: number = 10,
   options: ParseGeminiReviewOptions = {},
 ): SegmentationResult | null {
@@ -53,12 +71,10 @@ export function parseGeminiReviewResponse(
   const rawTargets = raw['targets'] as Array<Record<string, unknown>>;
 
   const targets = rawTargets.map((t, i) => {
+    // Map image_index → page_number using the pages array
     const regions = Array.isArray(t['regions'])
       ? (t['regions'] as Array<Record<string, unknown>>).map((r) => ({
-          ...r,
-          page_number: typeof r['page_number'] === 'string'
-            ? Number(r['page_number'])
-            : r['page_number'],
+          page_number: imageIndexToPageNumber(r['image_index'], pages),
         }))
       : t['regions'];
 
@@ -68,11 +84,9 @@ export function parseGeminiReviewResponse(
       regions,
     };
 
-    const rawFinish = t['finish_page_number'];
-    if (typeof rawFinish === 'number') {
-      target['finish_page_number'] = rawFinish;
-    } else if (typeof rawFinish === 'string') {
-      target['finish_page_number'] = Number(rawFinish);
+    const rawFinish = t['finish_image_index'];
+    if (rawFinish !== undefined) {
+      target['finish_page_number'] = imageIndexToPageNumber(rawFinish, pages);
     }
 
     if (t['extraction_fields'] !== undefined) {

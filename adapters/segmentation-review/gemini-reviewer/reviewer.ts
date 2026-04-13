@@ -73,6 +73,7 @@ export async function reviewSegmentation(
   return parseGeminiReviewResponse(
     parsedJson,
     runId,
+    pages,
     profile.max_regions_per_target,
     { extractionFields },
   );
