@@ -115,7 +115,7 @@ export function assembleLocalizationResults(
       .sort(([a], [b]) => a - b)
       .map(([pageNumber, { bbox }]) => ({
         page_number: pageNumber,
-        bbox_1000: bbox,
+        bbox_1000: padBbox(bbox),
       }));
 
     results.push({
@@ -126,4 +126,20 @@ export function assembleLocalizationResults(
   }
 
   return results;
+}
+
+/**
+ * Expands a bbox by `pad` units on each side (clamped to [0, 1000]).
+ * Acts as a safety net for minor edge clipping by the model.
+ */
+export function padBbox(
+  bbox: [number, number, number, number],
+  pad: number = 30,
+): [number, number, number, number] {
+  return [
+    Math.max(0, bbox[0] - pad),
+    Math.max(0, bbox[1] - pad),
+    Math.min(1000, bbox[2] + pad),
+    Math.min(1000, bbox[3] + pad),
+  ];
 }
