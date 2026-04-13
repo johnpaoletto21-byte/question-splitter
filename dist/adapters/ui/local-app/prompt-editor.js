@@ -101,6 +101,17 @@ function renderPromptEditorHtml(state) {
       placeholder="Edit the Agent 1 default prompt"
     >${esc(state.agent1Prompt)}</textarea>
 
+    <label for="reviewerPrompt">
+      Agent 1.5 — Reviewer Prompt
+      <span class="label-hint">(Segmentation Reviewer)</span>
+    </label>
+    <textarea
+      id="reviewerPrompt"
+      name="reviewerPrompt"
+      data-testid="prompt-editor-reviewer"
+      placeholder="Edit the Agent 1.5 default prompt"
+    >${esc(state.reviewerPrompt)}</textarea>
+
     <label for="agent2Prompt">
       Agent 2 — Localizer Prompt
       <span class="label-hint">(Region Localizer)</span>

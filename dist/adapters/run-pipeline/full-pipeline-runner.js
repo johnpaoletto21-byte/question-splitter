@@ -42,6 +42,7 @@ exports.runFullPipeline = runFullPipeline;
 const fs = __importStar(require("fs"));
 const pdf_renderer_1 = require("../source-preparation/pdf-renderer");
 const gemini_segmenter_1 = require("../segmentation/gemini-segmenter");
+const gemini_reviewer_1 = require("../segmentation-review/gemini-reviewer");
 const gemini_localizer_1 = require("../localization/gemini-localizer");
 const google_drive_1 = require("../upload/google-drive");
 const image_processing_1 = require("../image-processing");
@@ -124,12 +125,19 @@ async function runFullPipeline(input, deps = {}) {
     }
     const segmentation = (0, page_windows_1.mergeWindowedSegmentationResults)(rendered.run_id, windowResults);
     emit(input.onLog, 'segmentation', `Agent 1 found ${segmentation.targets.length} target(s)`);
-    let summary = (0, summary_1.buildRunSummaryFromSegmentation)(segmentation, extractionFields);
+    const reviewer = deps.reviewer ?? ((runId, segResult, allPages, profile, promptSnapshot, opts) => (0, gemini_reviewer_1.reviewSegmentation)(runId, segResult, allPages, profile, promptSnapshot, { apiKey: input.config.GEMINI_API_KEY }, undefined, undefined, opts));
+    emit(input.onLog, 'review', 'Running Agent 1.5 segmentation review');
+    const reviewedSegmentation = await (0, run_orchestrator_1.runReviewStep)(rendered.run_id, segmentation, rendered.preparedPages, rendered.activeProfile, rendered.promptSnapshot.reviewerPrompt, reviewer, { extractionFields });
+    const wasCorrected = reviewedSegmentation !== segmentation;
+    emit(input.onLog, 'review', wasCorrected
+        ? `Agent 1.5 corrected: ${reviewedSegmentation.targets.length} target(s) (Agent 1 had ${segmentation.targets.length})`
+        : `Agent 1.5: pass (${segmentation.targets.length} target(s) confirmed)`);
+    let summary = (0, summary_1.buildRunSummaryFromSegmentation)(reviewedSegmentation, extractionFields);
     const localizer = deps.localizer ?? ((runId, target, pages, profile, promptSnapshot) => (0, gemini_localizer_1.localizeTarget)(runId, target, pages, profile, promptSnapshot, { apiKey: input.config.GEMINI_API_KEY }));
     emit(input.onLog, 'localization', 'Running Agent 2 localization');
     const localized = [];
     const localizationFailureRows = [];
-    for (const target of segmentation.targets) {
+    for (const target of reviewedSegmentation.targets) {
         try {
             const result = await localizer(rendered.run_id, target, (0, page_windows_1.selectLocalizationContextPages)(target, rendered.preparedPages), rendered.activeProfile, rendered.promptSnapshot.agent2Prompt);
             localized.push(result);
@@ -164,7 +172,7 @@ async function runFullPipeline(input, deps = {}) {
     const finalRows = await (0, run_orchestrator_1.runUploadStep)(rendered.run_id, composedRows, input.config.DRIVE_FOLDER_ID, input.config.OAUTH_TOKEN_PATH, deps.driveUploader ?? google_drive_1.uploadToDrive);
     emit(input.onLog, 'upload', 'Drive upload step finished');
     const finalRowMap = new Map([...finalRows, ...localizationFailureRows].map((row) => [row.target_id, row]));
-    const orderedFinalRows = segmentation.targets
+    const orderedFinalRows = reviewedSegmentation.targets
         .map((target) => finalRowMap.get(target.target_id))
         .filter((row) => row !== undefined);
     summary = (0, summary_1.applyFinalResultsToSummary)(summary, orderedFinalRows);

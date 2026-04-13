@@ -254,6 +254,7 @@ function createPreviewServer(options = {}) {
                 const record = (0, run_state_1.createRunRecord)({
                     runLabel: upload.runLabel,
                     pdfFileName: upload.originalFileName,
+                    pdfFilePath: upload.pdfFilePath,
                     outputDir: config.OUTPUT_DIR,
                     extractionFields: upload.extractionFields,
                     promptSnapshot,
@@ -298,6 +299,26 @@ function createPreviewServer(options = {}) {
             writePng(res, target.local_output_path);
             return;
         }
+        // ── GET /runs/:runId/source-pdf ──────────────────────────────────────
+        const sourcePdfMatch = url.pathname.match(/^\/runs\/([^/]+)\/source-pdf$/);
+        if (req.method === 'GET' && sourcePdfMatch) {
+            const record = (0, run_state_1.getRunRecord)(sourcePdfMatch[1]);
+            if (!record ||
+                !record.pdfFilePath ||
+                !record.outputDir ||
+                !isPathInsideDirectory(record.pdfFilePath, path.join(record.outputDir, 'uploads')) ||
+                !fs.existsSync(record.pdfFilePath)) {
+                writeHtml(res, 404, (0, run_renderer_1.renderRunErrorHtml)('PDF Not Found', 'Source PDF not available for this run.'));
+                return;
+            }
+            const body = fs.readFileSync(record.pdfFilePath);
+            res.writeHead(200, {
+                'Content-Type': 'application/pdf',
+                'Content-Length': body.length,
+            });
+            res.end(body);
+            return;
+        }
         // ── GET /runs/:runId, /runs/:runId/summary, /runs/:runId/debug.md ───
         const runMatch = url.pathname.match(/^\/runs\/([^/]+)(?:\/(summary|debug\.md))?$/);
         if (req.method === 'GET' && runMatch) {
@@ -320,7 +341,8 @@ function createPreviewServer(options = {}) {
                     writeHtml(res, 200, (0, run_renderer_1.renderRunStatusHtml)(record));
                     return;
                 }
-                writeHtml(res, 200, addDebugLinkToSummaryHtml((0, summary_renderer_1.renderSummaryHtml)(withPreviewUrls(record.summary, record.id, record.outputDir)), record.id));
+                const sourcePdfUrl = record.pdfFilePath ? `/runs/${record.id}/source-pdf` : undefined;
+                writeHtml(res, 200, addDebugLinkToSummaryHtml((0, summary_renderer_1.renderSummaryHtml)(withPreviewUrls(record.summary, record.id, record.outputDir), { sourcePdfUrl }), record.id));
                 return;
             }
             writeHtml(res, 200, (0, run_renderer_1.renderRunStatusHtml)(record));
@@ -341,8 +363,10 @@ function createPreviewServer(options = {}) {
             readBody(req).then((rawBody) => {
                 const params = new URLSearchParams(rawBody);
                 const agent1 = params.get('agent1Prompt') ?? '';
+                const reviewer = params.get('reviewerPrompt') ?? '';
                 const agent2 = params.get('agent2Prompt') ?? '';
                 (0, store_1.setAgent1Prompt)(agent1);
+                (0, store_1.setReviewerPrompt)(reviewer);
                 (0, store_1.setAgent2Prompt)(agent2);
                 // Redirect back to GET to show the saved state (POST-Redirect-GET pattern).
                 res.writeHead(302, { Location: PROMPT_EDIT_PATH });
