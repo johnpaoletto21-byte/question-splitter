@@ -59,7 +59,8 @@ export function renderRunFormHtml(input: {
   <h1>Run PDF Pipeline</h1>
   <div class="nav">
     <a href="/summary-preview">Preview Summary</a> |
-    <a href="/prompt-edit">Edit Prompts</a>
+    <a href="/prompt-edit">Edit Prompts</a> |
+    <a href="/run-diagrams">Crop Diagrams Instead →</a>
   </div>
   ${configBlock}
   <form method="POST" action="/run" enctype="multipart/form-data" data-testid="run-upload-form">

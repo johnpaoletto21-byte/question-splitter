@@ -12,6 +12,12 @@ exports.markRunStatus = markRunStatus;
 exports.markRunSucceeded = markRunSucceeded;
 exports.markRunFailed = markRunFailed;
 exports.resetRunRecordsForTests = resetRunRecordsForTests;
+exports.createDiagramRunRecord = createDiagramRunRecord;
+exports.getDiagramRunRecord = getDiagramRunRecord;
+exports.appendDiagramRunLog = appendDiagramRunLog;
+exports.markDiagramRunStatus = markDiagramRunStatus;
+exports.markDiagramRunSucceeded = markDiagramRunSucceeded;
+exports.markDiagramRunFailed = markDiagramRunFailed;
 const runs = new Map();
 function nowIso() {
     return new Date().toISOString();
@@ -78,5 +84,64 @@ function markRunFailed(id, error, failureContext) {
 }
 function resetRunRecordsForTests() {
     runs.clear();
+    diagramRuns.clear();
+}
+const diagramRuns = new Map();
+function makeDiagramRunId() {
+    const random = Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0');
+    return `local_diagram_run_${Date.now()}_${random}`;
+}
+function createDiagramRunRecord(input) {
+    const timestamp = nowIso();
+    const record = {
+        id: makeDiagramRunId(),
+        status: 'queued',
+        imageFileName: input.imageFileName,
+        imageFilePath: input.imageFilePath,
+        outputDir: input.outputDir,
+        runOutputDir: input.runOutputDir,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        logs: [],
+    };
+    diagramRuns.set(record.id, record);
+    return record;
+}
+function getDiagramRunRecord(id) {
+    return diagramRuns.get(id);
+}
+function appendDiagramRunLog(id, stage, message, timestamp = nowIso()) {
+    const record = diagramRuns.get(id);
+    if (!record) {
+        return;
+    }
+    record.logs.push({ stage, message, timestamp });
+    record.updatedAt = timestamp;
+}
+function markDiagramRunStatus(id, status) {
+    const record = diagramRuns.get(id);
+    if (!record) {
+        return;
+    }
+    record.status = status;
+    record.updatedAt = nowIso();
+}
+function markDiagramRunSucceeded(id, result) {
+    const record = diagramRuns.get(id);
+    if (!record) {
+        return;
+    }
+    record.status = 'succeeded';
+    record.result = result;
+    record.updatedAt = nowIso();
+}
+function markDiagramRunFailed(id, error) {
+    const record = diagramRuns.get(id);
+    if (!record) {
+        return;
+    }
+    record.status = 'failed';
+    record.error = error;
+    record.updatedAt = nowIso();
 }
 //# sourceMappingURL=run-state.js.map

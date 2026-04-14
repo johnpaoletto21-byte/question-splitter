@@ -7,6 +7,7 @@
 import type { RunSummaryState } from '../../../core/run-summary/types';
 import type { ExtractionFieldDefinition } from '../../../core/extraction-fields';
 import type { PromptSnapshot } from '../../../core/prompt-config-store/types';
+import type { DiagramRunResult } from '../../../core/diagram-detection/types';
 
 export type LocalRunStatus = 'queued' | 'running' | 'succeeded' | 'failed';
 
@@ -120,4 +121,99 @@ export function markRunFailed(id: string, error: string, failureContext?: unknow
 
 export function resetRunRecordsForTests(): void {
   runs.clear();
+  diagramRuns.clear();
+}
+
+// ---------------------------------------------------------------------------
+// Diagram-only run records (parallel to the question-pipeline records above)
+// ---------------------------------------------------------------------------
+
+export interface LocalDiagramRunRecord {
+  id: string;
+  status: LocalRunStatus;
+  imageFileName?: string;
+  imageFilePath?: string;
+  outputDir?: string;
+  runOutputDir?: string;
+  createdAt: string;
+  updatedAt: string;
+  logs: LocalRunLogEntry[];
+  result?: DiagramRunResult;
+  error?: string;
+}
+
+const diagramRuns = new Map<string, LocalDiagramRunRecord>();
+
+function makeDiagramRunId(): string {
+  const random = Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0');
+  return `local_diagram_run_${Date.now()}_${random}`;
+}
+
+export function createDiagramRunRecord(input: {
+  imageFileName?: string;
+  imageFilePath?: string;
+  outputDir?: string;
+  runOutputDir?: string;
+}): LocalDiagramRunRecord {
+  const timestamp = nowIso();
+  const record: LocalDiagramRunRecord = {
+    id: makeDiagramRunId(),
+    status: 'queued',
+    imageFileName: input.imageFileName,
+    imageFilePath: input.imageFilePath,
+    outputDir: input.outputDir,
+    runOutputDir: input.runOutputDir,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    logs: [],
+  };
+  diagramRuns.set(record.id, record);
+  return record;
+}
+
+export function getDiagramRunRecord(id: string): LocalDiagramRunRecord | undefined {
+  return diagramRuns.get(id);
+}
+
+export function appendDiagramRunLog(
+  id: string,
+  stage: string,
+  message: string,
+  timestamp: string = nowIso(),
+): void {
+  const record = diagramRuns.get(id);
+  if (!record) {
+    return;
+  }
+  record.logs.push({ stage, message, timestamp });
+  record.updatedAt = timestamp;
+}
+
+export function markDiagramRunStatus(id: string, status: LocalRunStatus): void {
+  const record = diagramRuns.get(id);
+  if (!record) {
+    return;
+  }
+  record.status = status;
+  record.updatedAt = nowIso();
+}
+
+export function markDiagramRunSucceeded(id: string, result: DiagramRunResult): void {
+  const record = diagramRuns.get(id);
+  if (!record) {
+    return;
+  }
+  record.status = 'succeeded';
+  record.result = result;
+  record.updatedAt = nowIso();
+}
+
+export function markDiagramRunFailed(id: string, error: string): void {
+  const record = diagramRuns.get(id);
+  if (!record) {
+    return;
+  }
+  record.status = 'failed';
+  record.error = error;
+  record.updatedAt = nowIso();
 }

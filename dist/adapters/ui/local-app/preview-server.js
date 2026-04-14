@@ -57,7 +57,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.RUN_PATH = exports.PROMPT_EDIT_PATH = exports.PREVIEW_PATH = exports.PREVIEW_PORT = void 0;
+exports.DIAGRAM_RUN_PATH = exports.RUN_PATH = exports.PROMPT_EDIT_PATH = exports.PREVIEW_PATH = exports.PREVIEW_PORT = void 0;
 exports.createPreviewServer = createPreviewServer;
 const http = __importStar(require("http"));
 const fs = __importStar(require("fs"));
@@ -69,6 +69,8 @@ const run_renderer_1 = require("./run-renderer");
 const debug_package_1 = require("./debug-package");
 const run_state_1 = require("./run-state");
 const upload_handler_1 = require("./upload-handler");
+const diagram_upload_handler_1 = require("./diagram-upload-handler");
+const diagram_renderer_1 = require("./diagram-renderer");
 const store_1 = require("../../../core/prompt-config-store/store");
 const loader_1 = require("../../config/local-config/loader");
 const types_1 = require("../../config/local-config/types");
@@ -83,6 +85,8 @@ const PROMPT_EDIT_PATH = '/prompt-edit';
 exports.PROMPT_EDIT_PATH = PROMPT_EDIT_PATH;
 const RUN_PATH = '/run';
 exports.RUN_PATH = RUN_PATH;
+const DIAGRAM_RUN_PATH = '/run-diagrams';
+exports.DIAGRAM_RUN_PATH = DIAGRAM_RUN_PATH;
 /**
  * Reads a URL-encoded POST body from an IncomingMessage and returns the raw string.
  * Resolves when the 'end' event fires; rejects on 'error'.
@@ -206,10 +210,31 @@ function startRun(recordId, input, runFullPipelineFn) {
         (0, run_state_1.markRunFailed)(recordId, message, extractFailureContext(err));
     });
 }
+function startDiagramRun(recordId, input, runDiagramPipelineFn) {
+    (0, run_state_1.markDiagramRunStatus)(recordId, 'running');
+    (0, run_state_1.appendDiagramRunLog)(recordId, 'app', 'Diagram run queued from browser upload');
+    // Inject onLog so log events flow into the run record.
+    const wrappedInput = {
+        ...input,
+        onLog: (event) => (0, run_state_1.appendDiagramRunLog)(recordId, event.stage, event.message, event.timestamp),
+    };
+    void runDiagramPipelineFn(wrappedInput)
+        .then((result) => {
+        (0, run_state_1.appendDiagramRunLog)(recordId, 'app', 'Diagram run completed');
+        (0, run_state_1.markDiagramRunSucceeded)(recordId, result);
+    })
+        .catch((err) => {
+        const message = formatUnknownError(err);
+        (0, run_state_1.appendDiagramRunLog)(recordId, 'app', `Diagram run failed: ${message}`);
+        (0, run_state_1.markDiagramRunFailed)(recordId, message);
+    });
+}
 function createPreviewServer(options = {}) {
     const loadConfigFn = options.loadConfigFn ?? loader_1.loadConfig;
     const parsePdfUploadFn = options.parsePdfUploadFn ?? upload_handler_1.parsePdfUpload;
     const runFullPipelineFn = options.runFullPipelineFn ?? run_pipeline_1.runFullPipeline;
+    const parseDiagramUploadFn = options.parseDiagramUploadFn ?? diagram_upload_handler_1.parseDiagramUpload;
+    const runDiagramPipelineFn = options.runDiagramPipelineFn ?? run_pipeline_1.runDiagramPipeline;
     return http.createServer((req, res) => {
         const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
         if (req.method === 'GET' && url.pathname === '/') {
@@ -377,10 +402,119 @@ function createPreviewServer(options = {}) {
             });
             return;
         }
+        // ── GET /run-diagrams ────────────────────────────────────────────────
+        if (req.method === 'GET' && url.pathname === DIAGRAM_RUN_PATH) {
+            try {
+                const loaded = loadConfigForForm(loadConfigFn);
+                writeHtml(res, 200, (0, diagram_renderer_1.renderDiagramFormHtml)({
+                    configReady: loaded.config !== undefined,
+                    missingKeys: loaded.missingKeys,
+                    maxUploadMb: diagram_upload_handler_1.MAX_DIAGRAM_UPLOAD_BYTES / (1024 * 1024),
+                }));
+            }
+            catch (err) {
+                const message = formatUnknownError(err);
+                writeHtml(res, 500, (0, diagram_renderer_1.renderDiagramErrorHtml)('Config Error', message));
+            }
+            return;
+        }
+        // ── POST /run-diagrams ───────────────────────────────────────────────
+        if (req.method === 'POST' && url.pathname === DIAGRAM_RUN_PATH) {
+            let config;
+            try {
+                config = loadConfigFn();
+            }
+            catch (err) {
+                req.resume();
+                if (err instanceof types_1.ConfigMissingError) {
+                    writeHtml(res, 400, (0, diagram_renderer_1.renderDiagramErrorHtml)('Config Missing', `Missing config: ${err.missingKeys.join(', ')}`));
+                    return;
+                }
+                const message = formatUnknownError(err);
+                writeHtml(res, 500, (0, diagram_renderer_1.renderDiagramErrorHtml)('Config Error', message));
+                return;
+            }
+            parseDiagramUploadFn(req, config.OUTPUT_DIR)
+                .then((upload) => {
+                const record = (0, run_state_1.createDiagramRunRecord)({
+                    imageFileName: upload.originalFileName,
+                    imageFilePath: upload.imageFilePath,
+                    outputDir: config.OUTPUT_DIR,
+                });
+                const runOutputDir = path.join(config.OUTPUT_DIR, 'diagram-runs', record.id);
+                // Stash the per-run output dir so the preview route can validate paths.
+                record.runOutputDir = runOutputDir;
+                (0, run_state_1.appendDiagramRunLog)(record.id, 'upload', `Uploaded ${upload.originalFileName}`);
+                startDiagramRun(record.id, {
+                    sourceImagePath: upload.imageFilePath,
+                    outputDir: runOutputDir,
+                    config,
+                }, runDiagramPipelineFn);
+                redirect(res, `/diagram-runs/${record.id}`);
+            })
+                .catch((err) => {
+                const message = formatUnknownError(err);
+                const statusCode = typeof err.statusCode === 'number'
+                    ? err.statusCode
+                    : 400;
+                writeHtml(res, statusCode, (0, diagram_renderer_1.renderDiagramErrorHtml)('Upload Error', message));
+            });
+            return;
+        }
+        // ── GET /diagram-runs/:id/overlay ────────────────────────────────────
+        const diagramOverlayMatch = url.pathname.match(/^\/diagram-runs\/([^/]+)\/overlay$/);
+        if (req.method === 'GET' && diagramOverlayMatch) {
+            const record = (0, run_state_1.getDiagramRunRecord)(diagramOverlayMatch[1]);
+            if (!record ||
+                !record.result?.overlay_image_path ||
+                !record.runOutputDir ||
+                !isPathInsideDirectory(record.result.overlay_image_path, record.runOutputDir) ||
+                !fs.existsSync(record.result.overlay_image_path)) {
+                writeHtml(res, 404, (0, diagram_renderer_1.renderDiagramErrorHtml)('Overlay Not Found', `No overlay for ${diagramOverlayMatch[1]}`));
+                return;
+            }
+            writePng(res, record.result.overlay_image_path);
+            return;
+        }
+        // ── GET /diagram-runs/:id/crops/:index ───────────────────────────────
+        const diagramCropMatch = url.pathname.match(/^\/diagram-runs\/([^/]+)\/crops\/(\d+)$/);
+        if (req.method === 'GET' && diagramCropMatch) {
+            const record = (0, run_state_1.getDiagramRunRecord)(diagramCropMatch[1]);
+            const index = Number(diagramCropMatch[2]);
+            const diagram = record?.result?.diagrams.find((d) => d.diagram_index === index && d.status === 'ok');
+            if (!record ||
+                !diagram ||
+                diagram.status !== 'ok' ||
+                !record.runOutputDir ||
+                !isPathInsideDirectory(diagram.output_file_path, record.runOutputDir) ||
+                !fs.existsSync(diagram.output_file_path)) {
+                writeHtml(res, 404, (0, diagram_renderer_1.renderDiagramErrorHtml)('Crop Not Found', `No diagram crop ${index} for run ${diagramCropMatch[1]}`));
+                return;
+            }
+            writePng(res, diagram.output_file_path);
+            return;
+        }
+        // ── GET /diagram-runs/:id ────────────────────────────────────────────
+        const diagramRunMatch = url.pathname.match(/^\/diagram-runs\/([^/]+)$/);
+        if (req.method === 'GET' && diagramRunMatch) {
+            const record = (0, run_state_1.getDiagramRunRecord)(diagramRunMatch[1]);
+            if (!record) {
+                writeHtml(res, 404, (0, diagram_renderer_1.renderDiagramErrorHtml)('Run Not Found', `No diagram run for ${diagramRunMatch[1]}`));
+                return;
+            }
+            if (record.status === 'succeeded' && record.result) {
+                writeHtml(res, 200, (0, diagram_renderer_1.renderDiagramResultsHtml)(record));
+            }
+            else {
+                writeHtml(res, 200, (0, diagram_renderer_1.renderDiagramStatusHtml)(record));
+            }
+            return;
+        }
         // ── 404 for anything else ─────────────────────────────────────────────
         const msg = [
             `Not found. Available routes:`,
             `  http://localhost:${PREVIEW_PORT}${RUN_PATH}`,
+            `  http://localhost:${PREVIEW_PORT}${DIAGRAM_RUN_PATH}`,
             `  http://localhost:${PREVIEW_PORT}${PREVIEW_PATH}`,
             `  http://localhost:${PREVIEW_PORT}${PROMPT_EDIT_PATH}`,
             '',
