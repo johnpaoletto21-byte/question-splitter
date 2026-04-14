@@ -110,6 +110,7 @@ Return bbox_1000 as [y_min, x_min, y_max, x_max] on a 0-1000 normalized scale.
 - On continuation pages (where a question continues from a previous page), the bounding box must extend from the top of the question content all the way to where the next question begins, or to the bottom of the page content if no other question follows.
 - It is far better to include extra whitespace than to cut off any part of a diagram, figure, graph, or table.
 - When a question has visual elements (diagrams, graphs, geometric figures, tables), scan the ENTIRE page for content belonging to that question before drawing the bbox. Do not stop at the first text block.
+- Many exam pages use multi-column layouts where a single question's sub-parts are arranged side-by-side in columns rather than top-to-bottom. Before drawing a bounding box, scan the FULL WIDTH of the page for all sub-questions and content belonging to the same parent question. The bbox must span all columns containing content for that question.
 - Do NOT include dedicated answer sheet pages or simple answer input boxes (small blank rectangles where students write a number or short answer). However, DO include workspace elements that are part of the question: dotted grids, graph paper, construction lines, or template shapes provided for students to work with. These are question content, not answer blanks.
 - If a target boundary is ambiguous, include a review_comment.
 
