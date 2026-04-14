@@ -68,6 +68,7 @@ export function assembleLocalizationResults(
   questionList: ReadonlyArray<SegmentationTarget>,
   windowResults: ReadonlyArray<WindowLocalizationResult>,
   windows: ReadonlyArray<{ pages: ReadonlyArray<PreparedPageImage> }>,
+  excludePages?: ReadonlySet<number>,
 ): LocalizationResult[] {
   // Build a map: for each (question_number, page_number), collect all bbox entries
   // with a centrality score (how far from the edge of the window the page was).
@@ -79,6 +80,9 @@ export function assembleLocalizationResults(
     const windowSize = windowPages.length;
 
     for (const region of wr.regions) {
+      // Skip regions on excluded pages (e.g. answer sheets)
+      if (excludePages?.has(region.page_number)) continue;
+
       // Centrality: how far from the edge. For a 3-page window:
       // page at position 0 (first) → centrality 0
       // page at position 1 (middle) → centrality 1

@@ -23,12 +23,17 @@ function makeTargetId(index: number): string {
   return `q_${String(index + 1).padStart(4, '0')}`;
 }
 
+export interface ParsedReviewResult {
+  segmentation: SegmentationResult | null;
+  answerSheetPages: number[];
+}
+
 export function parseGeminiReviewResponse(
   raw: unknown,
   runId: string,
   maxRegionsPerTarget: number = 10,
   options: ParseGeminiReviewOptions = {},
-): SegmentationResult | null {
+): ParsedReviewResult {
   if (!isObject(raw)) {
     throw new Error('Gemini review response must be an object');
   }
@@ -41,8 +46,13 @@ export function parseGeminiReviewResponse(
     };
   }
 
+  // Parse answer_sheet_pages (available for both verdicts)
+  const answerSheetPages: number[] = Array.isArray(raw['answer_sheet_pages'])
+    ? (raw['answer_sheet_pages'] as unknown[]).filter((v): v is number => typeof v === 'number' && Number.isInteger(v))
+    : [];
+
   if (verdict === 'pass') {
-    return null;
+    return { segmentation: null, answerSheetPages };
   }
 
   if (!Array.isArray(raw['targets'])) {
@@ -83,7 +93,14 @@ export function parseGeminiReviewResponse(
 
   const normalized = { run_id: runId, targets };
 
-  return validateSegmentationResult(normalized, {
+  const validated = validateSegmentationResult(normalized, {
     extractionFields: options.extractionFields,
   });
+
+  return {
+    segmentation: validated
+      ? { ...validated, answer_sheet_pages: answerSheetPages.length > 0 ? answerSheetPages : undefined }
+      : null,
+    answerSheetPages,
+  };
 }

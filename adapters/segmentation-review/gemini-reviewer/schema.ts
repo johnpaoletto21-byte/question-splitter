@@ -32,6 +32,14 @@ export function buildGeminiReviewSchema(input: {
           'Corrected ordered list of targets. Required when verdict is "corrected". ' +
           'Omit or leave empty when verdict is "pass".',
       },
+      answer_sheet_pages: {
+        type: 'array',
+        description:
+          'List of 1-based page numbers that are dedicated answer sheets ' +
+          '(pages containing mostly answer boxes/grids for multiple questions, not question content). ' +
+          'Empty array if none. These pages will be excluded from question crops.',
+        items: { type: 'integer' },
+      },
     },
     required: ['verdict'],
   };

@@ -282,6 +282,71 @@ describe('assembleLocalizationResults — questions not found', () => {
 });
 
 // ---------------------------------------------------------------------------
+// excludePages (answer sheet filtering)
+// ---------------------------------------------------------------------------
+
+describe('assembleLocalizationResults — excludePages', () => {
+  it('excludes regions on pages in the excludePages set', () => {
+    const questions = [makeQuestion('1'), makeQuestion('2')];
+    const windowResults = [
+      makeWindowResult([
+        { question_number: '1', page_number: 4, bbox_1000: [100, 100, 900, 900] },
+        { question_number: '1', page_number: 12, bbox_1000: [50, 50, 200, 800] },
+        { question_number: '2', page_number: 6, bbox_1000: [100, 100, 900, 900] },
+        { question_number: '2', page_number: 12, bbox_1000: [200, 50, 300, 800] },
+      ]),
+    ];
+    const windows = [{ pages: [makePage(4), makePage(6), makePage(12)] }];
+
+    const results = assembleLocalizationResults(
+      'run_test', questions, windowResults, windows, new Set([12]),
+    );
+
+    expect(results).toHaveLength(2);
+    // q_0001 should only have page 4, not page 12
+    expect(results[0].regions).toHaveLength(1);
+    expect(results[0].regions[0].page_number).toBe(4);
+    // q_0002 should only have page 6, not page 12
+    expect(results[1].regions).toHaveLength(1);
+    expect(results[1].regions[0].page_number).toBe(6);
+  });
+
+  it('does not exclude anything when excludePages is undefined', () => {
+    const questions = [makeQuestion('1')];
+    const windowResults = [
+      makeWindowResult([
+        { question_number: '1', page_number: 4, bbox_1000: [100, 100, 900, 900] },
+        { question_number: '1', page_number: 12, bbox_1000: [50, 50, 200, 800] },
+      ]),
+    ];
+    const windows = [{ pages: [makePage(4), makePage(12)] }];
+
+    const results = assembleLocalizationResults('run_test', questions, windowResults, windows);
+
+    expect(results[0].regions).toHaveLength(2);
+  });
+
+  it('omits targets entirely if all their regions are on excluded pages', () => {
+    const questions = [makeQuestion('1'), makeQuestion('2')];
+    const windowResults = [
+      makeWindowResult([
+        { question_number: '1', page_number: 4, bbox_1000: [100, 100, 900, 900] },
+        { question_number: '2', page_number: 12, bbox_1000: [200, 50, 300, 800] },
+      ]),
+    ];
+    const windows = [{ pages: [makePage(4), makePage(12)] }];
+
+    const results = assembleLocalizationResults(
+      'run_test', questions, windowResults, windows, new Set([12]),
+    );
+
+    // q_0002 only had regions on page 12, so it should be omitted entirely
+    expect(results).toHaveLength(1);
+    expect(results[0].target_id).toBe('q_0001');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // padBbox
 // ---------------------------------------------------------------------------
 

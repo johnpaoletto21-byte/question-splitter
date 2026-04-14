@@ -69,7 +69,10 @@ Do not include a targets array.
 Return: {"verdict": "corrected", "targets": [...]}
 - Return targets in reading order.
 - Use the target_type from the run context.
-- Add a review_comment on corrected targets explaining what you changed.`;
+- Add a review_comment on corrected targets explaining what you changed.
+
+## Answer Sheet Detection
+If any pages are dedicated answer sheets (pages containing mostly answer boxes or grids for multiple questions, not question content), list their 1-based page numbers in answer_sheet_pages. These pages will be excluded from question crops. Return an empty array if no answer sheets are found.`;
 
 export const DEFAULT_AGENT2_PROMPT = `You are Agent 3: Region Localizer for an exam-paper processing pipeline.
 
