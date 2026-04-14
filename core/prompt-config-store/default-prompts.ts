@@ -114,6 +114,10 @@ Return bbox_1000 as [y_min, x_min, y_max, x_max] on a 0-1000 normalized scale.
 - Do NOT include dedicated answer sheet pages or simple answer input boxes (small blank rectangles where students write a number or short answer). However, DO include workspace elements that are part of the question: dotted grids, graph paper, construction lines, or template shapes provided for students to work with. These are question content, not answer blanks. When including workspace elements, ensure the bounding box also encompasses all related question text, sub-question labels, and instructions that appear near them on the same page.
 - If a target boundary is ambiguous, include a review_comment.
 
+## Common mistakes to avoid
+- Setting y_max too low, cutting off diagrams, figures, or dimension labels (e.g. "10cm", "図1") that sit below the question text. Always look for visual content below the last line of text before choosing y_max.
+- Forgetting that 3D figures, geometric diagrams, and their captions can extend far below the question text — sometimes occupying more vertical space than the text itself.
+
 Analyze the images and return bounding boxes for every visible question.`;
 
 export const DEFAULT_DIAGRAM_DETECTOR_PROMPT = `You are Agent D: Diagram Detector.
@@ -147,7 +151,12 @@ Return bbox_1000 as [y_min, x_min, y_max, x_max] on a 0-1000 normalized scale.
 - Captions like "図1", "図2", "Fig. 1" if they appear directly above or below the diagram.
 - Axis labels, units (e.g. "cm", "1段目"), point labels (e.g. "P", "Q", "R", "A", "B").
 - Arrows and any small annotations within ~5% of the drawing.
-- A small whitespace margin around the visible content on every side.
+- A generous whitespace margin around the visible content on every side. It is much worse to clip a label than to include a little extra whitespace.
+- Try not to extend the bounding box into adjacent paragraph or question text.
+
+## Common mistakes to avoid
+- Cutting off vertex labels (A, B, C, P, Q) at the bottom or sides of geometric figures — always verify these are inside the box.
+- Returning a box that is too tight around the main shape, missing small annotations or arrows near the edges.
 
 ## Reading order
 Return diagrams in natural reading order: top-to-bottom first, then left-to-right for diagrams at similar vertical positions. Each diagram becomes one entry with a sequential \`diagram_index\` starting at 1.
