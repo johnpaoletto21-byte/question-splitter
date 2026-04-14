@@ -96,6 +96,10 @@ Return bbox_1000 as [y_min, x_min, y_max, x_max] on a 0-1000 normalized scale.
 - Check all four edges of each diagram/figure to ensure nothing is clipped.
 - If a diagram extends to the edge of the page, set that edge of the bbox to 0 or 1000 as appropriate.
 
+## How to determine y_max (bottom edge)
+- Do NOT try to find the bottom edge of the question's content. Instead, set y_max to where the NEXT question's header begins on the same page (minus a small gap). If no other question follows on the page, set y_max to 1000 (page bottom).
+- This ensures that diagrams, figures, and 3D shapes positioned below the question text are never cut off, even when they are large and extend far below the last line of text.
+
 ## Rules
 - For each question visible in these images, return one entry per image it appears on.
 - Use image_position (1, 2, or 3) to indicate which image the bounding box is on: 1 = first image, 2 = second image, 3 = third image.
@@ -106,6 +110,7 @@ Return bbox_1000 as [y_min, x_min, y_max, x_max] on a 0-1000 normalized scale.
 - On continuation pages (where a question continues from a previous page), the bounding box must extend from the top of the question content all the way to where the next question begins, or to the bottom of the page content if no other question follows.
 - It is far better to include extra whitespace than to cut off any part of a diagram, figure, graph, or table.
 - When a question has visual elements (diagrams, graphs, geometric figures, tables), scan the ENTIRE page for content belonging to that question before drawing the bbox. Do not stop at the first text block.
+- Many exam pages use multi-column layouts where a single question's sub-parts are arranged side-by-side in columns rather than top-to-bottom. Before drawing a bounding box, scan the FULL WIDTH of the page for all sub-questions and content belonging to the same parent question. The bbox must span all columns containing content for that question.
 - Do NOT include dedicated answer sheet pages or simple answer input boxes (small blank rectangles where students write a number or short answer). However, DO include workspace elements that are part of the question: dotted grids, graph paper, construction lines, or template shapes provided for students to work with. These are question content, not answer blanks. When including workspace elements, ensure the bounding box also encompasses all related question text, sub-question labels, and instructions that appear near them on the same page.
 - If a target boundary is ambiguous, include a review_comment.
 
