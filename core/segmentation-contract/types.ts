@@ -46,6 +46,8 @@ export interface SegmentationTarget {
 export interface SegmentationResult {
   run_id: string;
   targets: SegmentationTarget[];
+  /** Pages identified as answer sheets (1-based page numbers). Regions on these pages are excluded from question crops. */
+  answer_sheet_pages?: number[];
 }
 
 /**

@@ -16,9 +16,10 @@ import { parseGeminiReviewResponse } from '../parser';
 const RUN_ID = 'run_2024-01-01_testrun1';
 
 describe('parseGeminiReviewResponse', () => {
-  it('returns null for verdict "pass"', () => {
+  it('returns null segmentation for verdict "pass"', () => {
     const result = parseGeminiReviewResponse({ verdict: 'pass' }, RUN_ID);
-    expect(result).toBeNull();
+    expect(result.segmentation).toBeNull();
+    expect(result.answerSheetPages).toEqual([]);
   });
 
   it('parses a corrected single-target response', () => {
@@ -34,11 +35,11 @@ describe('parseGeminiReviewResponse', () => {
       ],
     };
     const result = parseGeminiReviewResponse(raw, RUN_ID);
-    expect(result).not.toBeNull();
-    expect(result!.run_id).toBe(RUN_ID);
-    expect(result!.targets).toHaveLength(1);
-    expect(result!.targets[0].target_id).toBe('q_0001');
-    expect(result!.targets[0].target_type).toBe('question');
+    expect(result.segmentation).not.toBeNull();
+    expect(result.segmentation!.run_id).toBe(RUN_ID);
+    expect(result.segmentation!.targets).toHaveLength(1);
+    expect(result.segmentation!.targets[0].target_id).toBe('q_0001');
+    expect(result.segmentation!.targets[0].target_type).toBe('question');
   });
 
   it('assigns sequential target_ids in reading order', () => {
@@ -51,9 +52,9 @@ describe('parseGeminiReviewResponse', () => {
       ],
     };
     const result = parseGeminiReviewResponse(raw, RUN_ID);
-    expect(result!.targets[0].target_id).toBe('q_0001');
-    expect(result!.targets[1].target_id).toBe('q_0002');
-    expect(result!.targets[2].target_id).toBe('q_0003');
+    expect(result.segmentation!.targets[0].target_id).toBe('q_0001');
+    expect(result.segmentation!.targets[1].target_id).toBe('q_0002');
+    expect(result.segmentation!.targets[2].target_id).toBe('q_0003');
   });
 
   it('passes through question metadata', () => {
@@ -69,9 +70,9 @@ describe('parseGeminiReviewResponse', () => {
       ],
     };
     const result = parseGeminiReviewResponse(raw, RUN_ID);
-    expect(result!.targets[0].question_number).toBe('問3');
-    expect(result!.targets[0].question_text).toBe('Solve the equation.');
-    expect(result!.targets[0].sub_questions).toEqual(['(1)', '(2)']);
+    expect(result.segmentation!.targets[0].question_number).toBe('問3');
+    expect(result.segmentation!.targets[0].question_text).toBe('Solve the equation.');
+    expect(result.segmentation!.targets[0].sub_questions).toEqual(['(1)', '(2)']);
   });
 
   it('propagates review_comment when present', () => {
@@ -88,7 +89,7 @@ describe('parseGeminiReviewResponse', () => {
       ],
     };
     const result = parseGeminiReviewResponse(raw, RUN_ID);
-    expect(result!.targets[0].review_comment).toBe('Merged two split targets');
+    expect(result.segmentation!.targets[0].review_comment).toBe('Merged two split targets');
   });
 
   it('propagates extraction_fields when present', () => {
@@ -112,7 +113,7 @@ describe('parseGeminiReviewResponse', () => {
         type: 'boolean',
       }],
     });
-    expect(result!.targets[0].extraction_fields).toEqual({ has_diagram: true });
+    expect(result.segmentation!.targets[0].extraction_fields).toEqual({ has_diagram: true });
   });
 
   it('rejects non-object raw input', () => {
@@ -140,6 +141,49 @@ describe('parseGeminiReviewResponse', () => {
       ],
     };
     const result = parseGeminiReviewResponse(raw, 'run_custom_id');
-    expect(result!.run_id).toBe('run_custom_id');
+    expect(result.segmentation!.run_id).toBe('run_custom_id');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// answer_sheet_pages
+// ---------------------------------------------------------------------------
+
+describe('parseGeminiReviewResponse — answer_sheet_pages', () => {
+  it('parses answer_sheet_pages from "pass" verdict', () => {
+    const result = parseGeminiReviewResponse(
+      { verdict: 'pass', answer_sheet_pages: [10, 12] },
+      RUN_ID,
+    );
+    expect(result.segmentation).toBeNull();
+    expect(result.answerSheetPages).toEqual([10, 12]);
+  });
+
+  it('parses answer_sheet_pages from "corrected" verdict', () => {
+    const result = parseGeminiReviewResponse(
+      {
+        verdict: 'corrected',
+        targets: [
+          { target_type: 'question', question_number: '1', question_text: 'Q1', sub_questions: [] },
+        ],
+        answer_sheet_pages: [8],
+      },
+      RUN_ID,
+    );
+    expect(result.segmentation!.answer_sheet_pages).toEqual([8]);
+    expect(result.answerSheetPages).toEqual([8]);
+  });
+
+  it('defaults to empty array when answer_sheet_pages is missing', () => {
+    const result = parseGeminiReviewResponse({ verdict: 'pass' }, RUN_ID);
+    expect(result.answerSheetPages).toEqual([]);
+  });
+
+  it('filters out non-integer values from answer_sheet_pages', () => {
+    const result = parseGeminiReviewResponse(
+      { verdict: 'pass', answer_sheet_pages: [1, 'bad', 3.5, 4, null] },
+      RUN_ID,
+    );
+    expect(result.answerSheetPages).toEqual([1, 4]);
   });
 });

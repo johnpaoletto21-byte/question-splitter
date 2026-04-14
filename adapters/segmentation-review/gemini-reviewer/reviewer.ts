@@ -69,10 +69,28 @@ export async function reviewSegmentation(
   });
   const parsedJson = unwrapGeminiResponse(rawResponse);
 
-  return parseGeminiReviewResponse(
+  const parsed = parseGeminiReviewResponse(
     parsedJson,
     runId,
     profile.max_regions_per_target,
     { extractionFields },
   );
+
+  // If verdict was "pass", return null but attach answer_sheet_pages to the
+  // original segmentation result (handled by the caller in review-step / pipeline runner).
+  // If verdict was "corrected", answer_sheet_pages is already on the segmentation result.
+  if (parsed.segmentation === null) {
+    // Pass: return null, but we need to communicate answer_sheet_pages.
+    // We return a SegmentationResult with the original targets + answer_sheet_pages
+    // if any were detected; otherwise null to preserve existing behavior.
+    if (parsed.answerSheetPages.length > 0) {
+      return {
+        ...segmentationResult,
+        answer_sheet_pages: parsed.answerSheetPages,
+      };
+    }
+    return null;
+  }
+
+  return parsed.segmentation;
 }

@@ -284,7 +284,11 @@ export async function runFullPipeline(
       // Use segmentation result as fallback if review fails
       reviewedSegmentation = segmentation;
     }
-    const wasCorrected = reviewedSegmentation !== segmentation;
+    // The reviewer returns a new object if it corrected targets OR if it detected
+    // answer sheet pages (even with verdict "pass"). Check targets to determine
+    // whether the segmentation itself was actually corrected.
+    const wasCorrected = reviewedSegmentation !== segmentation
+      && reviewedSegmentation.targets !== segmentation.targets;
     emit(
       input.onLog,
       'review',
@@ -330,11 +334,23 @@ export async function runFullPipeline(
     }
 
     // Assemble per-window results into per-target LocalizationResults
+    const answerSheetPages = reviewedSegmentation.answer_sheet_pages;
+    const excludePages = answerSheetPages && answerSheetPages.length > 0
+      ? new Set(answerSheetPages)
+      : undefined;
+    if (excludePages) {
+      emit(
+        input.onLog,
+        'localization',
+        `Chunk ${chunk.chunkIndex}: excluding answer sheet page(s) [${answerSheetPages!.join(', ')}] from question regions`,
+      );
+    }
     const chunkLocalized = assembleLocalizationResults(
       rendered.run_id,
       reviewedSegmentation.targets,
       windowResults,
       locWindows,
+      excludePages,
     );
 
     // Track targets that weren't found in any window
