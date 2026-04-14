@@ -96,6 +96,10 @@ Return bbox_1000 as [y_min, x_min, y_max, x_max] on a 0-1000 normalized scale.
 - Check all four edges of each diagram/figure to ensure nothing is clipped.
 - If a diagram extends to the edge of the page, set that edge of the bbox to 0 or 1000 as appropriate.
 
+## How to determine y_max (bottom edge)
+- Do NOT try to find the bottom edge of the question's content. Instead, set y_max to where the NEXT question's header begins on the same page (minus a small gap). If no other question follows on the page, set y_max to 1000 (page bottom).
+- This ensures that diagrams, figures, and 3D shapes positioned below the question text are never cut off, even when they are large and extend far below the last line of text.
+
 ## Rules
 - For each question visible in these images, return one entry per image it appears on.
 - Use image_position (1, 2, or 3) to indicate which image the bounding box is on: 1 = first image, 2 = second image, 3 = third image.
