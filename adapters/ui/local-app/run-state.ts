@@ -135,6 +135,8 @@ export interface LocalDiagramRunRecord {
   imageFilePath?: string;
   outputDir?: string;
   runOutputDir?: string;
+  /** Gemini model used for diagram detection (displayed on results page). */
+  model?: string;
   createdAt: string;
   updatedAt: string;
   logs: LocalRunLogEntry[];
@@ -154,6 +156,7 @@ export function createDiagramRunRecord(input: {
   imageFilePath?: string;
   outputDir?: string;
   runOutputDir?: string;
+  model?: string;
 }): LocalDiagramRunRecord {
   const timestamp = nowIso();
   const record: LocalDiagramRunRecord = {
@@ -163,6 +166,7 @@ export function createDiagramRunRecord(input: {
     imageFilePath: input.imageFilePath,
     outputDir: input.outputDir,
     runOutputDir: input.runOutputDir,
+    model: input.model,
     createdAt: timestamp,
     updatedAt: timestamp,
     logs: [],

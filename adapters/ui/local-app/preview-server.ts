@@ -520,6 +520,7 @@ function createPreviewServer(options: PreviewServerOptions = {}): http.Server {
             imageFileName: upload.originalFileName,
             imageFilePath: upload.imageFilePath,
             outputDir: config.OUTPUT_DIR,
+            model: upload.model,
           });
           const runOutputDir = path.join(
             config.OUTPUT_DIR,
@@ -539,6 +540,7 @@ function createPreviewServer(options: PreviewServerOptions = {}): http.Server {
               sourceImagePath: upload.imageFilePath,
               outputDir: runOutputDir,
               config,
+              modelOverride: upload.model,
             },
             runDiagramPipelineFn,
           );

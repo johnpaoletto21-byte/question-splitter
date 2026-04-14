@@ -22,7 +22,7 @@ import type { PixelRect } from '../../core/crop-engine/types';
 import type { CropExecutor } from '../../core/run-orchestrator/crop-step';
 import type { ImageStackerFn } from '../../core/output-composer/composer';
 
-const CROP_PADDING_PX = 4;
+const CROP_PADDING_FRACTION = 0.02;
 
 function safeName(raw: string): string {
   return raw.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80);
@@ -36,11 +36,14 @@ function padAndClampRect(
   pixelRect: PixelRect,
   imageWidth: number,
   imageHeight: number,
+  paddingFraction: number = CROP_PADDING_FRACTION,
 ): PixelRect {
-  const x = Math.max(0, pixelRect.x - CROP_PADDING_PX);
-  const y = Math.max(0, pixelRect.y - CROP_PADDING_PX);
-  const right = Math.min(imageWidth, pixelRect.x + pixelRect.width + CROP_PADDING_PX);
-  const bottom = Math.min(imageHeight, pixelRect.y + pixelRect.height + CROP_PADDING_PX);
+  const padX = Math.round(imageWidth * paddingFraction);
+  const padY = Math.round(imageHeight * paddingFraction);
+  const x = Math.max(0, pixelRect.x - padX);
+  const y = Math.max(0, pixelRect.y - padY);
+  const right = Math.min(imageWidth, pixelRect.x + pixelRect.width + padX);
+  const bottom = Math.min(imageHeight, pixelRect.y + pixelRect.height + padY);
 
   return {
     x,

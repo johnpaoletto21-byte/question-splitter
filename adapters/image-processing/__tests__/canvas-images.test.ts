@@ -40,7 +40,7 @@ describe('canvas image adapters', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('adds 4px padding on every side for an interior crop', async () => {
+  it('adds percentage-based padding on every side for an interior crop', async () => {
     const crop = makeCanvasCropExecutor(tmpDir);
     const outPath = await crop('run_test', 'q_0001', page, {
       x: 10,
@@ -49,11 +49,12 @@ describe('canvas image adapters', () => {
       height: 40,
     });
 
+    // 2% of 100×80 = 2px horizontal, 2px vertical padding per side
     const image = await loadImage(outPath);
     expect(fs.existsSync(outPath)).toBe(true);
-    expect(image.width).toBe(38);
-    expect(image.height).toBe(48);
-    expect(path.basename(outPath)).toContain('6_16_38x48');
+    expect(image.width).toBe(34);
+    expect(image.height).toBe(44);
+    expect(path.basename(outPath)).toContain('8_18_34x44');
   });
 
   it('clamps padded crops at the top-left page edge', async () => {
@@ -65,10 +66,11 @@ describe('canvas image adapters', () => {
       height: 12,
     });
 
+    // 2% padding: padX=2, padY=2. x=max(0,0)=0, y=max(0,1)=1
     const image = await loadImage(outPath);
-    expect(image.width).toBe(16);
-    expect(image.height).toBe(19);
-    expect(path.basename(outPath)).toContain('0_0_16x19');
+    expect(image.width).toBe(14);
+    expect(image.height).toBe(16);
+    expect(path.basename(outPath)).toContain('0_1_14x16');
   });
 
   it('clamps padded crops at the bottom-right page edge', async () => {
@@ -80,10 +82,11 @@ describe('canvas image adapters', () => {
       height: 6,
     });
 
+    // 2% padding: padX=2, padY=2. x=90, y=72, right=min(100,102)=100, bottom=min(80,82)=80
     const image = await loadImage(outPath);
-    expect(image.width).toBe(12);
-    expect(image.height).toBe(10);
-    expect(path.basename(outPath)).toContain('88_70_12x10');
+    expect(image.width).toBe(10);
+    expect(image.height).toBe(8);
+    expect(path.basename(outPath)).toContain('90_72_10x8');
   });
 
   it('clamps full-page crops on every side without adding synthetic pixels', async () => {
@@ -127,9 +130,9 @@ describe('canvas image adapters', () => {
       const image = await loadImage(outPath);
       expect(fs.existsSync(outPath)).toBe(true);
       expect(path.basename(outPath)).toBe('diagram_01.png');
-      // 4-px pad on every side, clamped to image bounds (interior crop here).
-      expect(image.width).toBe(48);
-      expect(image.height).toBe(33);
+      // 2% pad: padX=2, padY=2 on 100×80 image. Interior crop → +2 each side.
+      expect(image.width).toBe(44);
+      expect(image.height).toBe(29);
     });
 
     it('clamps the padded crop at image edges', async () => {

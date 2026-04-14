@@ -51,6 +51,8 @@ export interface RunDiagramPipelineInput {
   config: LocalConfig;
   /** Override the default detector prompt (e.g. for prompt experiments). */
   promptOverride?: string;
+  /** Override the default Gemini model (e.g. for comparing flash-lite vs flash). */
+  modelOverride?: string;
   onLog?: (event: PipelineLogEvent) => void;
 }
 
@@ -106,10 +108,12 @@ export async function runDiagramPipeline(
     `Source image: ${sourceWidth} × ${sourceHeight} px`,
   );
 
-  emit(input.onLog, 'detect', 'Calling Gemini diagram detector (Agent D)');
+  const detectorModel = input.modelOverride ?? undefined;
+  emit(input.onLog, 'detect', `Calling Gemini diagram detector (Agent D)${detectorModel ? ` with model ${detectorModel}` : ''}`);
   const detector = deps.detector ?? defaultDetector;
   const detection = await detector(input.sourceImagePath, promptText, {
     apiKey: input.config.GEMINI_API_KEY,
+    model: detectorModel,
   });
   emit(
     input.onLog,

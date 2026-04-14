@@ -19,7 +19,7 @@ import { parseGeminiDiagramDetectionResponse } from './parser';
 import { GEMINI_DIAGRAM_DETECTOR_SCHEMA } from './schema';
 import type { GeminiDiagramDetectorConfig, HttpPostFn } from './types';
 
-export const DEFAULT_GEMINI_DIAGRAM_DETECTOR_MODEL = 'gemini-3.1-flash-lite-preview';
+export const DEFAULT_GEMINI_DIAGRAM_DETECTOR_MODEL = 'gemini-2.5-flash';
 
 // ---------------------------------------------------------------------------
 // Default HTTP client (native fetch, Node.js 18+)

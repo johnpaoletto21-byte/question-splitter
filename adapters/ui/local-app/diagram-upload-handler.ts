@@ -22,6 +22,8 @@ const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 export interface ParsedDiagramUpload {
   imageFilePath: string;
   originalFileName: string;
+  /** Gemini model name selected by the user (from the form dropdown). */
+  model?: string;
 }
 
 export class DiagramUploadError extends Error {
@@ -80,6 +82,7 @@ export function parseDiagramUpload(
     let fileSeen = false;
     let uploadPath: string | undefined;
     let originalFileName = '';
+    let selectedModel: string | undefined;
     let writeDone: Promise<void> | undefined;
     let settled = false;
 
@@ -97,6 +100,12 @@ export function parseDiagramUpload(
       cleanup();
       reject(err);
     };
+
+    bb.on('field', (fieldName, value) => {
+      if (fieldName === 'model' && typeof value === 'string' && value.trim()) {
+        selectedModel = value.trim();
+      }
+    });
 
     bb.on('file', (fieldName, file, info) => {
       if (fieldName !== 'imageFile') {
@@ -186,6 +195,7 @@ export function parseDiagramUpload(
           resolve({
             imageFilePath: uploadPath!,
             originalFileName,
+            model: selectedModel,
           });
         })
         .catch(fail);

@@ -76,6 +76,12 @@ export function renderDiagramFormHtml(input: {
     <input id="imageFile" name="imageFile" type="file" accept="image/png,.png" data-testid="diagram-image-file"${disabled}>
     <div class="notice warn">Maximum upload size: ${input.maxUploadMb} MB.</div>
 
+    <label for="model">Gemini Model</label>
+    <select id="model" name="model" data-testid="diagram-model-select"${disabled} style="font-family:monospace;font-size:0.9rem;padding:0.25rem;">
+      <option value="gemini-2.5-flash" selected>Flash 2.5 (better accuracy)</option>
+      <option value="gemini-3.1-flash-lite-preview">Flash Lite (fast / cheap)</option>
+    </select>
+
     <button type="submit" data-testid="diagram-start-button"${disabled}>Crop Diagrams</button>
   </form>
 </body>
@@ -191,6 +197,7 @@ export function renderDiagramResultsHtml(record: LocalDiagramRunRecord): string 
     <a href="/run">Question Pipeline</a>
   </div>
   ${record.imageFileName ? `<p><strong>Source:</strong> ${esc(record.imageFileName)} (${result.source_width} × ${result.source_height} px)</p>` : ''}
+  ${record.model ? `<p><strong>Model:</strong> ${esc(record.model)}</p>` : ''}
   ${summary}
   ${overlayBlock}
   ${cropsBlock}
