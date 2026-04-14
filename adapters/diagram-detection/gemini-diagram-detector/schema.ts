@@ -32,7 +32,7 @@ export const GEMINI_DIAGRAM_DETECTOR_SCHEMA: Record<string, unknown> = {
               '(0,0) is top-left of the image, (1000,1000) is bottom-right. ' +
               'y_min must be less than y_max; x_min must be less than x_max. ' +
               'Include the diagram itself plus any caption (e.g. 図1), axis labels, units, ' +
-              'arrows, point labels, and a small whitespace margin on every side.',
+              'arrows, point labels, and a generous whitespace margin on every side.',
             minItems: 4,
             maxItems: 4,
             items: {
