@@ -38,6 +38,18 @@ export declare function setAgent2Prompt(prompt: string): void;
  */
 export declare function setDeduplicatorPrompt(prompt: string): void;
 /**
+ * Updates the Agent H1 (hint image generation) prompt for the current session.
+ */
+export declare function setHintImageGenPrompt(prompt: string): void;
+/**
+ * Updates the Agent H2 (hint overlay / JSON annotation) prompt for the current session.
+ */
+export declare function setHintOverlayPrompt(prompt: string): void;
+/**
+ * Updates the Agent H3 (hint blend render) prompt for the current session.
+ */
+export declare function setHintBlendRenderPrompt(prompt: string): void;
+/**
  * Captures an immutable snapshot of the current prompt state.
  * Called by the orchestrator at run start (bootstrapRun).
  *

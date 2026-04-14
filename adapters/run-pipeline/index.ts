@@ -10,3 +10,10 @@ export type {
   RunDiagramPipelineDependencies,
   DetectorFn,
 } from './diagram-pipeline-runner';
+export { runHintPipeline } from './hint-pipeline-runner';
+export type {
+  RunHintPipelineInput,
+  RunHintPipelineDependencies,
+  HintAnnotationMethod,
+  HintPipelineResult,
+} from './hint-pipeline-runner';

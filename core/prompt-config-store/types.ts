@@ -22,6 +22,12 @@ export interface PromptConfigState {
   agent2Prompt: string;
   /** Current Agent 4 (deduplicator) editable instruction block. Empty string means use built-in. */
   deduplicatorPrompt: string;
+  /** Current Agent H1 (hint image generation) editable instruction block. Empty string means use built-in. */
+  hintImageGenPrompt: string;
+  /** Current Agent H2 (hint overlay / JSON annotation) editable instruction block. Empty string means use built-in. */
+  hintOverlayPrompt: string;
+  /** Current Agent H3 (hint blend render) editable instruction block. Empty string means use built-in. */
+  hintBlendRenderPrompt: string;
 }
 
 /**
@@ -39,6 +45,12 @@ export interface PromptSnapshot {
   readonly agent2Prompt: string;
   /** Agent 4 (deduplicator) prompt at run-start time. */
   readonly deduplicatorPrompt: string;
+  /** Agent H1 (hint image generation) prompt at run-start time. */
+  readonly hintImageGenPrompt: string;
+  /** Agent H2 (hint overlay / JSON annotation) prompt at run-start time. */
+  readonly hintOverlayPrompt: string;
+  /** Agent H3 (hint blend render) prompt at run-start time. */
+  readonly hintBlendRenderPrompt: string;
   /** ISO-8601 timestamp when this snapshot was captured. */
   readonly capturedAt: string;
 }

@@ -162,6 +162,9 @@ describe('runFullPipeline', () => {
       reviewerPrompt: 'queued reviewer prompt',
       agent2Prompt: 'queued localizer prompt',
       deduplicatorPrompt: 'queued deduplicator prompt',
+      hintImageGenPrompt: '',
+      hintOverlayPrompt: '',
+      hintBlendRenderPrompt: '',
       capturedAt: '2024-01-01T00:00:00.000Z',
     };
     const page: PreparedPageImage = {

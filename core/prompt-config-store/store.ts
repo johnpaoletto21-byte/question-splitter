@@ -18,6 +18,9 @@ import {
   DEFAULT_REVIEWER_PROMPT,
   DEFAULT_AGENT2_PROMPT,
   DEFAULT_DEDUPLICATOR_PROMPT,
+  DEFAULT_HINT_IMAGE_GEN_PROMPT,
+  DEFAULT_HINT_OVERLAY_PROMPT,
+  DEFAULT_HINT_BLEND_RENDER_PROMPT,
 } from './default-prompts';
 
 /**
@@ -29,6 +32,9 @@ const DEFAULT_STATE: PromptConfigState = {
   reviewerPrompt: DEFAULT_REVIEWER_PROMPT,
   agent2Prompt: DEFAULT_AGENT2_PROMPT,
   deduplicatorPrompt: DEFAULT_DEDUPLICATOR_PROMPT,
+  hintImageGenPrompt: DEFAULT_HINT_IMAGE_GEN_PROMPT,
+  hintOverlayPrompt: DEFAULT_HINT_OVERLAY_PROMPT,
+  hintBlendRenderPrompt: DEFAULT_HINT_BLEND_RENDER_PROMPT,
 };
 
 /** Live session state — mutable only through the exported setters. */
@@ -75,6 +81,27 @@ export function setDeduplicatorPrompt(prompt: string): void {
 }
 
 /**
+ * Updates the Agent H1 (hint image generation) prompt for the current session.
+ */
+export function setHintImageGenPrompt(prompt: string): void {
+  _state = { ..._state, hintImageGenPrompt: prompt };
+}
+
+/**
+ * Updates the Agent H2 (hint overlay / JSON annotation) prompt for the current session.
+ */
+export function setHintOverlayPrompt(prompt: string): void {
+  _state = { ..._state, hintOverlayPrompt: prompt };
+}
+
+/**
+ * Updates the Agent H3 (hint blend render) prompt for the current session.
+ */
+export function setHintBlendRenderPrompt(prompt: string): void {
+  _state = { ..._state, hintBlendRenderPrompt: prompt };
+}
+
+/**
  * Captures an immutable snapshot of the current prompt state.
  * Called by the orchestrator at run start (bootstrapRun).
  *
@@ -89,6 +116,9 @@ export function capturePromptSnapshot(): PromptSnapshot {
     reviewerPrompt: _state.reviewerPrompt,
     agent2Prompt: _state.agent2Prompt,
     deduplicatorPrompt: _state.deduplicatorPrompt,
+    hintImageGenPrompt: _state.hintImageGenPrompt,
+    hintOverlayPrompt: _state.hintOverlayPrompt,
+    hintBlendRenderPrompt: _state.hintBlendRenderPrompt,
     capturedAt: new Date().toISOString(),
   });
 }

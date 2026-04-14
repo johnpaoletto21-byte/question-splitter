@@ -166,6 +166,33 @@ Return diagrams in natural reading order: top-to-bottom first, then left-to-righ
 - If the image contains zero diagrams (e.g. text-only question or answer-box-only orphan crop): return an empty \`diagrams\` array. Do NOT invent diagrams to fill the response.
 - Add a brief \`label\` per diagram if a caption is visible (e.g. "図1", "Fig. 2").`;
 
+export const DEFAULT_HINT_IMAGE_GEN_PROMPT = `You are a Japanese maths teacher and you have a red marker pen.
+Generate an image of the exact same size as the attached image.
+Do not change the original image in any way; just draw on it with your red marker to show the student the first step to solving it.`;
+
+export const DEFAULT_HINT_OVERLAY_PROMPT = `You are a Japanese maths teacher. You receive an image of a maths diagram and a hint from the teacher describing what to draw on it.
+Convert the teacher's hint into precise drawing instructions.
+
+Return annotations as an array of drawing instructions. Each instruction has a "type" and coordinates in bbox_1000 format (0-1000 normalized to image dimensions).
+
+Supported types:
+- {"type": "line", "from": [x, y], "to": [x, y]} — a straight red line
+- {"type": "arrow", "from": [x, y], "to": [x, y]} — a red arrow (arrowhead at "to")
+- {"type": "arc", "center": [x, y], "radius": r, "startAngle": deg, "endAngle": deg} — a red arc
+- {"type": "text", "position": [x, y], "content": "..."} — a short red text label
+
+Draw exactly what the teacher's hint describes. Use at most 5-8 instructions.
+If no hint is provided, analyze the diagram and show the first step to solving the problem.`;
+
+export const DEFAULT_HINT_BLEND_RENDER_PROMPT = `You are a Japanese maths teacher and you have a red marker pen.
+Generate an image of the exact same size as the attached image.
+Do not change the original image in any way.
+Draw EXACTLY the following annotations on it in red marker:
+
+{annotations_json}
+
+Draw each annotation precisely at the specified coordinates. Use a natural hand-drawn red marker style.`;
+
 export const DEFAULT_DEDUPLICATOR_PROMPT = `You are Agent 4: Question Deduplicator for an exam-paper processing pipeline.
 
 ## Task

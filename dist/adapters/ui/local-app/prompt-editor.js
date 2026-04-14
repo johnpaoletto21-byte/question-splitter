@@ -123,6 +123,39 @@ function renderPromptEditorHtml(state) {
       placeholder="Edit the Agent 2 default prompt"
     >${esc(state.agent2Prompt)}</textarea>
 
+    <label for="hintImageGenPrompt">
+      Agent H1 — Hint Image Generation
+      <span class="label-hint">(Image Generation method prompt)</span>
+    </label>
+    <textarea
+      id="hintImageGenPrompt"
+      name="hintImageGenPrompt"
+      data-testid="prompt-editor-hint-image-gen"
+      placeholder="Edit the Agent H1 default prompt"
+    >${esc(state.hintImageGenPrompt)}</textarea>
+
+    <label for="hintOverlayPrompt">
+      Agent H2 — Hint Overlay (JSON)
+      <span class="label-hint">(Canvas Overlay &amp; Blend step 1 prompt)</span>
+    </label>
+    <textarea
+      id="hintOverlayPrompt"
+      name="hintOverlayPrompt"
+      data-testid="prompt-editor-hint-overlay"
+      placeholder="Edit the Agent H2 default prompt"
+    >${esc(state.hintOverlayPrompt)}</textarea>
+
+    <label for="hintBlendRenderPrompt">
+      Agent H3 — Hint Blend Render
+      <span class="label-hint">(Blend step 2 prompt — use {annotations_json} placeholder)</span>
+    </label>
+    <textarea
+      id="hintBlendRenderPrompt"
+      name="hintBlendRenderPrompt"
+      data-testid="prompt-editor-hint-blend-render"
+      placeholder="Edit the Agent H3 default prompt"
+    >${esc(state.hintBlendRenderPrompt)}</textarea>
+
     <button type="submit" data-testid="prompt-editor-save">Save for This Session</button>
   </form>
 </body>

@@ -18,6 +18,12 @@ exports.appendDiagramRunLog = appendDiagramRunLog;
 exports.markDiagramRunStatus = markDiagramRunStatus;
 exports.markDiagramRunSucceeded = markDiagramRunSucceeded;
 exports.markDiagramRunFailed = markDiagramRunFailed;
+exports.createHintRunRecord = createHintRunRecord;
+exports.getHintRunRecord = getHintRunRecord;
+exports.appendHintRunLog = appendHintRunLog;
+exports.markHintRunStatus = markHintRunStatus;
+exports.markHintRunSucceeded = markHintRunSucceeded;
+exports.markHintRunFailed = markHintRunFailed;
 const runs = new Map();
 function nowIso() {
     return new Date().toISOString();
@@ -85,6 +91,7 @@ function markRunFailed(id, error, failureContext) {
 function resetRunRecordsForTests() {
     runs.clear();
     diagramRuns.clear();
+    hintRuns.clear();
 }
 const diagramRuns = new Map();
 function makeDiagramRunId() {
@@ -137,6 +144,66 @@ function markDiagramRunSucceeded(id, result) {
 }
 function markDiagramRunFailed(id, error) {
     const record = diagramRuns.get(id);
+    if (!record) {
+        return;
+    }
+    record.status = 'failed';
+    record.error = error;
+    record.updatedAt = nowIso();
+}
+const hintRuns = new Map();
+function makeHintRunId() {
+    const random = Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0');
+    return `local_hint_run_${Date.now()}_${random}`;
+}
+function createHintRunRecord(input) {
+    const timestamp = nowIso();
+    const record = {
+        id: makeHintRunId(),
+        status: 'queued',
+        imageFileName: input.imageFileName,
+        imageFilePath: input.imageFilePath,
+        hintText: input.hintText,
+        method: input.method,
+        outputDir: input.outputDir,
+        runOutputDir: input.runOutputDir,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        logs: [],
+    };
+    hintRuns.set(record.id, record);
+    return record;
+}
+function getHintRunRecord(id) {
+    return hintRuns.get(id);
+}
+function appendHintRunLog(id, stage, message, timestamp = nowIso()) {
+    const record = hintRuns.get(id);
+    if (!record) {
+        return;
+    }
+    record.logs.push({ stage, message, timestamp });
+    record.updatedAt = timestamp;
+}
+function markHintRunStatus(id, status) {
+    const record = hintRuns.get(id);
+    if (!record) {
+        return;
+    }
+    record.status = status;
+    record.updatedAt = nowIso();
+}
+function markHintRunSucceeded(id, result) {
+    const record = hintRuns.get(id);
+    if (!record) {
+        return;
+    }
+    record.status = 'succeeded';
+    record.result = result;
+    record.updatedAt = nowIso();
+}
+function markHintRunFailed(id, error) {
+    const record = hintRuns.get(id);
     if (!record) {
         return;
     }
