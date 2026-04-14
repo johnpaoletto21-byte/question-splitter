@@ -2,7 +2,12 @@
 /**
  * adapters/segmentation-review/gemini-reviewer/prompt.ts
  *
- * Constructs the review prompt for Agent 1.5.
+ * Constructs the review prompt for Agent 2 (reviewer).
+ * Now operates per-chunk (receives chunk's pages and chunk's segmentation output).
+ *
+ * The reviewer reviews Agent 1's question inventory (no regions/page info).
+ * It verifies question_number accuracy, split/merge correctness, and filters
+ * non-question content.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.buildReviewPrompt = buildReviewPrompt;
@@ -11,9 +16,7 @@ function buildReviewPrompt(pages, profile, promptSnapshot, segmentationResult, o
     const instructionBlock = promptSnapshot.trim() !== ''
         ? promptSnapshot.trim()
         : default_prompts_1.DEFAULT_REVIEWER_PROMPT;
-    const pageList = pages
-        .map((p) => `  - Page ${p.page_number} (source: ${p.source_id})`)
-        .join('\n');
+    // Show Agent 1's question list (no regions to convert)
     const targetsJson = JSON.stringify(segmentationResult.targets, null, 2);
     const extractionFields = options.extractionFields ?? [];
     const fieldBlock = extractionFields.length === 0
@@ -27,13 +30,10 @@ ${extractionFields.map((field) => `- ${field.key}: ${field.description}`).join('
 
 ## Run Context
 - Target type: ${profile.target_type}
-- Maximum page regions per target: ${profile.max_regions_per_target}
+- Number of page images provided: ${pages.length}
 ${fieldBlock}
 
-## Pages provided (in order)
-${pageList}
-
-## Agent 1 Segmentation Output (to review)
+## Agent 1 Question List (to review)
 ${targetsJson}
 `;
 }

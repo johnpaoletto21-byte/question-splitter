@@ -4,9 +4,9 @@
  *
  * Gemini structured output response schema for Agent 1.
  *
- * This JSON schema is sent in generationConfig.responseSchema so that
- * Gemini returns a predictable JSON object that the parser can validate
- * against the normalized segmentation contract.
+ * Agent 1 produces a **question inventory** — an ordered list of questions
+ * found in the document. No spatial/region information is requested.
+ * Page-level localization is handled by Agent 3 via sliding windows.
  *
  * Note: target_id is intentionally absent — the parser assigns sequential
  * IDs in reading order after the response arrives.
@@ -31,35 +31,28 @@ function buildExtractionFieldsSchema(extractionFields) {
 }
 function buildGeminiSegmentationSchema(input = {}) {
     const extractionFields = input.extractionFields ?? [];
-    const allowedRegionPageNumbers = input.allowedRegionPageNumbers ?? [];
-    const pageNumberSchema = allowedRegionPageNumbers.length > 0
-        ? {
-            type: 'string',
-            description: '1-based page number where part of this target appears.',
-            enum: allowedRegionPageNumbers.map(String),
-        }
-        : {
-            type: 'integer',
-            description: '1-based page number where part of this target appears.',
-            minimum: 1,
-        };
     const targetProperties = {
         target_type: {
             type: 'string',
             description: 'The type of this target. Use "question" for a parent question.',
         },
-        regions: {
+        question_number: {
+            type: 'string',
+            description: 'The question number as printed in the document (e.g. "1", "2", "問3", "Q4"). ' +
+                'Usually found at the top-left of the question.',
+        },
+        question_text: {
+            type: 'string',
+            description: 'The first ~200 characters of the question body text. ' +
+                'Include inline notes for diagrams/figures in square brackets, ' +
+                'e.g. "[diagram on the right]", "[graph below]".',
+        },
+        sub_questions: {
             type: 'array',
-            description: 'Ordered page references for this target. 1 entry if the question fits ' +
-                'on one page, 2 entries if it spans two pages. Maximum 2 entries.',
-            minItems: 1,
-            maxItems: 2,
+            description: 'Sub-question labels like ["(1)", "(2)", "(3)"], ["(a)", "(b)"], or ["①", "②"]. ' +
+                'Empty array if the question has no sub-parts.',
             items: {
-                type: 'object',
-                properties: {
-                    page_number: pageNumberSchema,
-                },
-                required: ['page_number'],
+                type: 'string',
             },
         },
         review_comment: {
@@ -68,56 +61,14 @@ function buildGeminiSegmentationSchema(input = {}) {
                 'Use this to flag targets that may need manual review.',
         },
     };
-    const targetRequired = ['target_type', 'regions'];
-    if (input.requireFinishPage === true) {
-        const finishPageSchema = input.focusPageNumber !== undefined
-            ? {
-                type: 'string',
-                description: 'The 1-based page number where this target finishes.',
-                enum: [String(input.focusPageNumber)],
-            }
-            : {
-                type: 'integer',
-                description: 'The 1-based page number where this target finishes.',
-                minimum: 1,
-            };
-        targetProperties['finish_page_number'] = finishPageSchema;
-        targetRequired.push('finish_page_number');
-    }
+    const targetRequired = ['target_type', 'question_number', 'question_text', 'sub_questions'];
     if (extractionFields.length > 0) {
         targetProperties['extraction_fields'] = buildExtractionFieldsSchema(extractionFields);
         targetRequired.push('extraction_fields');
     }
-    const classificationPageNumberSchema = allowedRegionPageNumbers.length > 0
-        ? {
-            type: 'string',
-            description: '1-based page number.',
-            enum: allowedRegionPageNumbers.map(String),
-        }
-        : {
-            type: 'integer',
-            description: '1-based page number.',
-            minimum: 1,
-        };
     return {
         type: 'object',
         properties: {
-            page_classifications: {
-                type: 'array',
-                description: 'Classification for each provided page. One entry per page, in the same order as pages provided.',
-                items: {
-                    type: 'object',
-                    properties: {
-                        page_number: classificationPageNumberSchema,
-                        classification: {
-                            type: 'string',
-                            description: 'The classification assigned to this page.',
-                            enum: ['question_content', 'figure_only', 'blank', 'cover', 'answer_sheet'],
-                        },
-                    },
-                    required: ['page_number', 'classification'],
-                },
-            },
             targets: {
                 type: 'array',
                 description: 'Ordered list of identified question targets in reading order.',
@@ -128,7 +79,7 @@ function buildGeminiSegmentationSchema(input = {}) {
                 },
             },
         },
-        required: ['page_classifications', 'targets'],
+        required: ['targets'],
     };
 }
 /** JSON schema object for Gemini's responseSchema field. */

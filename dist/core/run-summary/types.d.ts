@@ -13,6 +13,7 @@
  * Later tasks (TASK-401, TASK-501) will extend with final-result fields.
  */
 import type { ExtractionFieldDefinition } from '../extraction-fields';
+import type { DebugData } from './debug-types';
 /**
  * Per-target summary entry as visible in the local run UI.
  *
@@ -25,10 +26,8 @@ export interface RunSummaryTargetEntry {
     target_id: string;
     /** Target type from the segmentation contract (e.g. 'question'). */
     target_type: string;
-    /** Ordered list of page numbers covered by this target (from regions[]). */
+    /** Ordered list of page numbers covered by this target (from localization). */
     page_numbers: number[];
-    /** Page where the target's final visible content ends. */
-    finish_page_number?: number;
     /** Run-scoped custom boolean values produced by Agent 1. */
     extraction_fields?: Record<string, boolean>;
     /**
@@ -96,5 +95,7 @@ export interface RunSummaryState {
     run_id: string;
     extraction_fields?: ExtractionFieldDefinition[];
     targets: RunSummaryTargetEntry[];
+    /** Temporary pipeline debug data. Omit in production. */
+    debugData?: DebugData;
 }
 //# sourceMappingURL=types.d.ts.map

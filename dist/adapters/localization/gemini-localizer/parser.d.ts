@@ -1,37 +1,27 @@
 /**
  * adapters/localization/gemini-localizer/parser.ts
  *
- * Parses and translates the raw Gemini structured output into the
- * normalized LocalizationResult contract for one target.
+ * Parses the raw Gemini structured output from a window localization call
+ * into WindowLocalizationResult.
  *
- * Responsibilities:
- *   1. Validate the raw JSON structure from Gemini.
- *   2. Carry the target_id from the incoming SegmentationTarget
- *      (Agent 2 never invents or changes target identity).
- *   3. Cross-validate region count and page_number order against the
- *      Agent 1 SegmentationTarget (Agent 2 must not reorder or add regions).
- *   4. Validate each bbox_1000 via the localization contract.
- *   5. Return a fully normalized, validated LocalizationResult.
+ * Agent 3 receives 1-3 images and identifies which questions appear in them.
+ * It returns image_position (1/2/3) which we map deterministically to
+ * page_number using the windowPages array.
  *
- * Nothing from this file should reach outside the adapter boundary
- * in raw form — only the normalized LocalizationResult is returned.
- *
- * Cross-contract drift guards (items 3–4) enforce the Layer B invariant
- * that Agent 2 localizes existing targets; it must not redefine them.
+ * Validates bbox_1000 constraints (shape, range, non-inversion).
  */
-import type { LocalizationResult } from '../../../core/localization-contract/types';
-import type { SegmentationTarget } from '../../../core/segmentation-contract/types';
+import type { PreparedPageImage } from '../../../core/source-model/types';
+import type { WindowLocalizationResult } from './window-result';
 /**
- * Parses the raw Gemini structured JSON output and returns a normalized
- * LocalizationResult for a single target.
+ * Parses the raw Gemini window localization response.
  *
- * @param raw        The parsed JSON object from Gemini's response body.
- * @param runId      The run_id for the current orchestrator run.
- * @param source     The Agent 1 SegmentationTarget this localization is for.
- *                   Used to carry target_id and enforce region consistency.
- * @param maxRegionsPerTarget  Max regions per INV-3 (from active profile).
- * @returns          Validated, normalized LocalizationResult.
- * @throws           Error or LocalizationValidationError on invalid response.
+ * Maps image_position (1/2/3) → windowPages[position-1].page_number.
+ * This is deterministic and cannot fail (bounded to window size).
+ *
+ * @param raw          The parsed JSON from Gemini's response body.
+ * @param runId        The run_id for the current run.
+ * @param windowPages  The ordered PreparedPageImage[] sent in this window.
+ * @returns            Validated WindowLocalizationResult.
  */
-export declare function parseGeminiLocalizationResponse(raw: unknown, runId: string, source: SegmentationTarget, maxRegionsPerTarget?: number): LocalizationResult;
+export declare function parseWindowLocalizationResponse(raw: unknown, runId: string, windowPages: ReadonlyArray<PreparedPageImage>): WindowLocalizationResult;
 //# sourceMappingURL=parser.d.ts.map

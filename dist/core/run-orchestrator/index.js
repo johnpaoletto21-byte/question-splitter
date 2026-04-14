@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.resetPromptConfig = exports.capturePromptSnapshot = exports.setAgent2Prompt = exports.setReviewerPrompt = exports.setAgent1Prompt = exports.getPromptConfig = exports.validateCropTargetProfile = exports.V1_ACTIVE_PROFILE = exports.RunBootstrapError = exports.runUploadStep = exports.runCompositionStep = exports.runCropStep = exports.runLocalizationStep = exports.runReviewStep = exports.runSegmentationStep = exports.renderAllSources = exports.bootstrapRun = void 0;
+exports.resetPromptConfig = exports.capturePromptSnapshot = exports.setDeduplicatorPrompt = exports.setAgent2Prompt = exports.setReviewerPrompt = exports.setAgent1Prompt = exports.getPromptConfig = exports.validateCropTargetProfile = exports.V1_ACTIVE_PROFILE = exports.RunBootstrapError = exports.runUploadStep = exports.runCompositionStep = exports.runCropStep = exports.runDeduplicationStep = exports.assembleLocalizationResults = exports.runReviewStep = exports.runSegmentationStep = exports.renderAllSources = exports.bootstrapRun = void 0;
 var bootstrap_1 = require("./bootstrap");
 Object.defineProperty(exports, "bootstrapRun", { enumerable: true, get: function () { return bootstrap_1.bootstrapRun; } });
 var render_step_1 = require("./render-step");
@@ -10,7 +10,9 @@ Object.defineProperty(exports, "runSegmentationStep", { enumerable: true, get: f
 var review_step_1 = require("./review-step");
 Object.defineProperty(exports, "runReviewStep", { enumerable: true, get: function () { return review_step_1.runReviewStep; } });
 var localization_step_1 = require("./localization-step");
-Object.defineProperty(exports, "runLocalizationStep", { enumerable: true, get: function () { return localization_step_1.runLocalizationStep; } });
+Object.defineProperty(exports, "assembleLocalizationResults", { enumerable: true, get: function () { return localization_step_1.assembleLocalizationResults; } });
+var deduplication_step_1 = require("./deduplication-step");
+Object.defineProperty(exports, "runDeduplicationStep", { enumerable: true, get: function () { return deduplication_step_1.runDeduplicationStep; } });
 var crop_step_1 = require("./crop-step");
 Object.defineProperty(exports, "runCropStep", { enumerable: true, get: function () { return crop_step_1.runCropStep; } });
 var composition_step_1 = require("./composition-step");
@@ -27,6 +29,7 @@ Object.defineProperty(exports, "getPromptConfig", { enumerable: true, get: funct
 Object.defineProperty(exports, "setAgent1Prompt", { enumerable: true, get: function () { return store_1.setAgent1Prompt; } });
 Object.defineProperty(exports, "setReviewerPrompt", { enumerable: true, get: function () { return store_1.setReviewerPrompt; } });
 Object.defineProperty(exports, "setAgent2Prompt", { enumerable: true, get: function () { return store_1.setAgent2Prompt; } });
+Object.defineProperty(exports, "setDeduplicatorPrompt", { enumerable: true, get: function () { return store_1.setDeduplicatorPrompt; } });
 Object.defineProperty(exports, "capturePromptSnapshot", { enumerable: true, get: function () { return store_1.capturePromptSnapshot; } });
 Object.defineProperty(exports, "resetPromptConfig", { enumerable: true, get: function () { return store_1.resetPromptConfig; } });
 //# sourceMappingURL=index.js.map

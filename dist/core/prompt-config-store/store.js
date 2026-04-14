@@ -17,17 +17,19 @@ exports.getPromptConfig = getPromptConfig;
 exports.setAgent1Prompt = setAgent1Prompt;
 exports.setReviewerPrompt = setReviewerPrompt;
 exports.setAgent2Prompt = setAgent2Prompt;
+exports.setDeduplicatorPrompt = setDeduplicatorPrompt;
 exports.capturePromptSnapshot = capturePromptSnapshot;
 exports.resetPromptConfig = resetPromptConfig;
 const default_prompts_1 = require("./default-prompts");
 /**
- * Default prompts for both agents.
+ * Default prompts for all agents.
  * These are editable instruction blocks; adapters append run-specific context.
  */
 const DEFAULT_STATE = {
     agent1Prompt: default_prompts_1.DEFAULT_AGENT1_PROMPT,
     reviewerPrompt: default_prompts_1.DEFAULT_REVIEWER_PROMPT,
     agent2Prompt: default_prompts_1.DEFAULT_AGENT2_PROMPT,
+    deduplicatorPrompt: default_prompts_1.DEFAULT_DEDUPLICATOR_PROMPT,
 };
 /** Live session state — mutable only through the exported setters. */
 let _state = { ...DEFAULT_STATE };
@@ -53,11 +55,18 @@ function setReviewerPrompt(prompt) {
     _state = { ..._state, reviewerPrompt: prompt };
 }
 /**
- * Updates the Agent 2 (localizer) prompt for the current session.
+ * Updates the Agent 3 (localizer) prompt for the current session.
  * Does not affect any active run — runs use their start-time snapshot.
  */
 function setAgent2Prompt(prompt) {
     _state = { ..._state, agent2Prompt: prompt };
+}
+/**
+ * Updates the Agent 4 (deduplicator) prompt for the current session.
+ * Does not affect any active run — runs use their start-time snapshot.
+ */
+function setDeduplicatorPrompt(prompt) {
+    _state = { ..._state, deduplicatorPrompt: prompt };
 }
 /**
  * Captures an immutable snapshot of the current prompt state.
@@ -73,6 +82,7 @@ function capturePromptSnapshot() {
         agent1Prompt: _state.agent1Prompt,
         reviewerPrompt: _state.reviewerPrompt,
         agent2Prompt: _state.agent2Prompt,
+        deduplicatorPrompt: _state.deduplicatorPrompt,
         capturedAt: new Date().toISOString(),
     });
 }

@@ -18,36 +18,21 @@ export interface GeminiSegmenterConfig {
     model?: string;
 }
 /**
- * A single region as Gemini returns it in structured output.
- * Only page_number — no bbox (that is Agent 2 scope).
- */
-export interface GeminiRawRegion {
-    page_number: number;
-}
-/**
- * A single target as Gemini returns it.
+ * A single target as Gemini returns it (question inventory — no regions).
  * Note: target_id is NOT in this shape — the parser assigns sequential IDs
  * based on reading order after the response arrives.
  */
 export interface GeminiRawTarget {
     target_type: string;
-    finish_page_number?: number;
-    regions: GeminiRawRegion[];
     extraction_fields?: Record<string, unknown>;
     review_comment?: string;
-}
-/**
- * A page classification as Gemini returns it in structured output.
- * Used as a safety net to detect phantom targets on non-content pages.
- */
-export interface GeminiRawPageClassification {
-    page_number: number;
-    classification: string;
+    question_number?: string;
+    question_text?: string;
+    sub_questions?: string[];
 }
 /** Top-level shape of the Gemini structured JSON output. */
 export interface GeminiRawSegmentationOutput {
     targets: GeminiRawTarget[];
-    page_classifications?: GeminiRawPageClassification[];
 }
 /**
  * Minimal HTTP POST abstraction.

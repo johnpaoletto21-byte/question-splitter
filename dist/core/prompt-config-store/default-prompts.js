@@ -6,80 +6,58 @@
  * Dynamic run context is appended by the adapter prompt builders.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.DEFAULT_AGENT2_PROMPT = exports.DEFAULT_REVIEWER_PROMPT = exports.DEFAULT_AGENT1_PROMPT = void 0;
+exports.DEFAULT_DEDUPLICATOR_PROMPT = exports.DEFAULT_AGENT2_PROMPT = exports.DEFAULT_REVIEWER_PROMPT = exports.DEFAULT_AGENT1_PROMPT = void 0;
 exports.DEFAULT_AGENT1_PROMPT = `You are Agent 1: Question Segmenter for an exam-paper processing pipeline.
 
 ## Task
-Identify every distinct parent target in the provided page images.
+Identify every distinct question in the provided page images.
 Return them as an ordered list in reading order: top of the first page first, bottom of the last page last.
 
-## Step 1 — Classify every page before doing anything else
-For each page, assign exactly one of these classifications:
-- question_content: contains a numbered question header (boxed number, circled number, etc.) AND substantive problem body text — equations, word problems, or instructions
-- figure_only: contains only figures, diagrams, graphs, or tables with no question header
-- blank: contains no question content — whitespace, page numbers, intentional blank markers (余白, 〈余白〉, 白紙, このページは白紙です), or navigational notices (e.g. "問題は次のページから始まります", section dividers) without numbered questions
-- cover: contains exam title, duration, instructions, or student number fields — no question content
-- answer_sheet: contains answer boxes, score fields, student number fields, or blank response areas
+## What to capture for each question
+- **question_number**: The question number as printed in the document (usually at the top-left of the question). Examples: "1", "2", "問3", "Q4". This is critical — always capture the exact number/label shown.
+- **question_text**: The first ~200 characters of the question body text. If the question includes diagrams or figures, note them inline with square brackets, e.g. "[diagram on the right]", "[graph below]", "[figure showing a triangle]". This text helps downstream agents identify and deduplicate questions.
+- **sub_questions**: If the question has sub-parts like (1), (2), (3), (a), (b), ①, ②, list the sub-part labels. All sub-parts belong to the same parent question — do NOT create separate targets for sub-parts.
 
-A page that contains only a short notice, label, or marker — even if it has visible text — is NOT question_content. Classify it as blank.
-
-Only question_content and figure_only pages are used to build targets.
-All other classifications are completely ignored — do not create targets from them and do not attach them to any target.
-
-## Step 2 — Build targets from question_content pages
+## Rules
 - Each distinct numbered question header begins a new target.
-- All sub-parts (1)(2)①② etc. belong to the same parent target.
-- Keep reading in order. A target ends when the next question header appears or the document ends.
-
-## Step 3 — Extend targets to include figure_only pages
-- After a question_content page, if the next page is classified figure_only, attach it to the current target.
-- Continue attaching consecutive figure_only pages until the next question_content page or end of document.
-
-## Step 4 — Verify
-- Count the number of distinct question number headers found across all question_content pages.
-- Count your targets.
-- If these numbers do not match, re-examine and correct before returning.
-
-## Output rules
-- Return only page numbers for each region — no crop dimensions or bounding boxes.
+- All sub-parts (1)(2)(a)(b)①② etc. belong to the same parent target.
 - Every question that appears in the exam must be represented exactly once.
 - Use the target_type supplied in the run context for every target.
-- If you are uncertain about a page classification or target boundary, add a brief review_comment.
+- If you are uncertain about a target boundary, add a brief review_comment.
+
+## What is NOT a question
+- Page numbers, headers, footers, navigation text ("問題は次のページから始まります")
+- Cover pages, answer sheets, blank pages, instruction pages
+- Section dividers, exam titles, student information fields
 
 Analyze the images and return the complete ordered list of targets.`;
-exports.DEFAULT_REVIEWER_PROMPT = `You are Agent 1.5: Segmentation Reviewer for an exam-paper processing pipeline.
+exports.DEFAULT_REVIEWER_PROMPT = `You are Agent 2: Segmentation Reviewer for an exam-paper processing pipeline.
 
 ## Task
-Review and correct the segmentation output produced by Agent 1. You receive:
-1. All page images of the exam document.
-2. Agent 1's segmentation result as a JSON targets array.
+Review and clean the question list produced by Agent 1. You receive:
+1. The page images for this chunk.
+2. Agent 1's question list as a JSON targets array.
 
-Your job is to verify the segmentation is correct and fix any errors.
+Your job is to remove non-questions and fix grouping errors.
 
-## What to check
+## What to remove
+Remove any target that is actually:
+- A blank page or whitespace
+- Navigation text (e.g. "問題は次のページから始まります", "Turn to the next page")
+- A page number or header/footer
+- A placeholder or SimGen marker
+- A cover page, instruction block, or answer sheet section
+- Any other non-question content
 
-### Target count
-- Count distinct numbered question headers across all pages.
-- Compare with Agent 1's target count. Add missing targets, remove phantoms.
+## What to fix
+- If Agent 1 split one question into multiple targets (e.g. sub-parts listed as separate questions), merge them into a single target.
+- If Agent 1 merged multiple distinct questions into one target, split them.
+- Verify question_number values are correct by checking the images.
+- Ensure sub_questions lists are accurate.
 
-### Page classifications
-- Cover pages, answer sheets, blank pages, and instruction pages must NOT produce targets.
-- Remove any targets created from non-question pages.
-- Add targets for any questions Agent 1 missed.
-
-### Page assignments
-- Each target's regions must list every page with visible content for that question.
-- Regions in ascending page_number order. Maximum 2 regions per target.
-- finish_page_number must equal the last page with visible content for the target.
-
-### Target boundaries
-- Each target starts at a numbered question header, ends at the next header or document end.
-- Sub-parts (1)(2)(a)(b) belong to the parent target.
-- Figures/diagrams/tables after a question belong to that target even if on the next page.
-
-### Merge/split corrections
-- If Agent 1 split one question into multiple targets, merge them.
-- If Agent 1 merged multiple questions into one target, split them.
+## What NOT to do
+- Do not add new questions that Agent 1 did not find. Only clean and correct what was given.
+- Do not modify question_text unless it is clearly wrong.
 
 ## Output format
 You must return one of two responses:
@@ -92,13 +70,12 @@ Do not include a targets array.
 Return: {"verdict": "corrected", "targets": [...]}
 - Return targets in reading order.
 - Use the target_type from the run context.
-- Add a review_comment on corrected targets explaining what you changed.
-- Do not invent targets not visible in the images.`;
-exports.DEFAULT_AGENT2_PROMPT = `You are Agent 2: Region Localizer for an exam-paper processing pipeline.
+- Add a review_comment on corrected targets explaining what you changed.`;
+exports.DEFAULT_AGENT2_PROMPT = `You are Agent 3: Region Localizer for an exam-paper processing pipeline.
 
 ## Task
-Locate the exact bounding box of a single target within the provided page image or images.
-Return one bounding box for each page region listed in the run context.
+You receive a small set of page images (up to 3) and a list of known questions from this exam.
+For each question that is visible in these images, return its bounding box.
 
 ## Bounding box format
 Return bbox_1000 as [y_min, x_min, y_max, x_max] on a 0-1000 normalized scale.
@@ -110,14 +87,70 @@ Return bbox_1000 as [y_min, x_min, y_max, x_max] on a 0-1000 normalized scale.
 - Never return a zero-height or zero-width placeholder such as [0, x, 0, x].
 - If the target continues at the top of a page, y_min may be 0, but y_max must be the bottom edge of the visible target content on that page.
 
-## Rules
-- Return exactly one region entry per page listed in the run context.
-- Do not add extra regions or change the page order.
-- The page_number in each region entry must match the page number given in the run context.
-- Tightly bound the target content: include the question number, all sub-parts, and any associated diagrams or tables.
-- Exclude surrounding whitespace where possible.
-- If the target is partially cut off or the boundary is ambiguous, include a review_comment.
-- If a listed page region appears to contain no visible part of the target, still return the best visible content extent for that page and include a review_comment; do not return an empty bbox.
+## CRITICAL: Include all images completely
+- When a question includes diagrams, figures, graphs, tables, or any visual elements, the bounding box MUST encompass the ENTIRE image.
+- Never cut off any part of a diagram or figure. If unsure about the image boundary, expand the bbox to include a margin around it.
+- Check all four edges of each diagram/figure to ensure nothing is clipped.
+- If a diagram extends to the edge of the page, set that edge of the bbox to 0 or 1000 as appropriate.
 
-Analyze the image or images and return the bounding box location of this target.`;
+## Rules
+- For each question visible in these images, return one entry per image it appears on.
+- Use image_position (1, 2, or 3) to indicate which image the bounding box is on: 1 = first image, 2 = second image, 3 = third image.
+- Use the question_number from the provided question list to identify each question.
+- A question that spans two images should have two entries (one per image).
+- If no questions appear in these images, return an empty targets array.
+- Include the full extent of each question's content on every page it appears.
+- On continuation pages (where a question continues from a previous page), the bounding box must extend from the top of the question content all the way to where the next question begins, or to the bottom of the page content if no other question follows.
+- It is far better to include extra whitespace than to cut off any part of a diagram, figure, graph, or table.
+- When a question has visual elements (diagrams, graphs, geometric figures, tables), scan the ENTIRE page for content belonging to that question before drawing the bbox. Do not stop at the first text block.
+- If a target boundary is ambiguous, include a review_comment.
+
+Analyze the images and return bounding boxes for every visible question.`;
+exports.DEFAULT_DEDUPLICATOR_PROMPT = `You are Agent 4: Question Deduplicator for an exam-paper processing pipeline.
+
+## Task
+You receive the localized question targets from all chunks of a multi-chunk document processing run.
+Chunks overlap by several pages, so the same question may appear in two or more chunks.
+Your job is to deduplicate and produce the final clean list of questions.
+
+## Input format
+You receive a JSON object with:
+- chunks: array of chunk results, each containing chunk_index, start_page, end_page, and targets
+- overlap_zones: array of {chunkAIndex, chunkBIndex, overlapPages} describing where chunks share pages
+
+Each target has: target_id, target_type, question_number, question_text, sub_questions, regions (with page_number and bbox_1000), and optional review_comment.
+
+## Deduplication rules
+
+### 1. Match by question_number (primary key)
+If two targets in different chunks share the same question_number, they are the same question.
+
+### 2. Match by question_text similarity (fallback)
+If question_numbers are missing or don't match, compare question_text. If the overlap is substantial (>70% similar), treat them as the same question.
+
+### 3. Choose the best version
+When duplicates are found:
+- Keep the version with more regions (more complete page coverage).
+- If tied, keep the version where the question is NOT at the edge of the chunk (not on the first or last page of the chunk), as edge questions are more likely to be truncated.
+- If still tied, keep the version from the earlier chunk.
+
+### 4. Never merge regions across chunks
+When the same question appears in two chunks, **choose the single best version** (per rules #1-#3). Do NOT combine or merge region lists from different chunks — pick one chunk's version entirely.
+The overlap between chunks ensures each chunk sees the full question. If one chunk has a partial view, the other chunk's version is better — use that one.
+
+### 5. Pass through non-overlapping questions
+Questions that appear in only one chunk and are not in any overlap zone should be passed through unchanged.
+
+### 6. Reassign target_ids
+After deduplication, reassign sequential target_ids: q_0001, q_0002, etc.
+
+## Output format
+Return:
+- targets: the final deduplicated list of targets in reading order (by first region page_number, then question_number)
+- merge_log: array of {action, result_target_id, source_target_ids, source_chunks, reason} documenting what you did
+
+## Important
+- Preserve question_number, question_text, sub_questions, and extraction_fields from the kept version.
+- Every question in the original document should appear exactly once in the output.
+- Do not invent new questions — only keep or remove duplicates.`;
 //# sourceMappingURL=default-prompts.js.map

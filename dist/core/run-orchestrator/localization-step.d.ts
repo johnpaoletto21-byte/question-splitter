@@ -1,60 +1,63 @@
 /**
  * core/run-orchestrator/localization-step.ts
  *
- * Orchestrator step that invokes Agent 2 localization for each target and
- * returns the ordered array of normalized LocalizationResults.
+ * Orchestrator step that runs sliding window localization (Agent 3)
+ * and assembles the per-window results into per-target LocalizationResults.
  *
- * Design (mirrors segmentation-step.ts pattern):
- *   - The actual localizer is injected as a `Localizer` function so that
+ * Design:
+ *   - The actual localizer is injected as a `WindowLocalizer` function so that
  *     core stays free of provider SDK imports (INV-9 / PO-8).
- *   - `adapters/localization/gemini-localizer` implements the Localizer type.
- *   - Targets are processed in the order Agent 1 produced them (reading order).
- *     Agent 2 never drives target order — it only localizes what Agent 1 found.
- *   - LocalizationResult[] preserves the same index order as
- *     SegmentationResult.targets so downstream steps can zip them safely.
- *
- * TASK-502 (complete): promptSnapshot is captured by bootstrapRun from
- * core/prompt-config-store and passed here by the caller. The snapshot is
- * immutable — mid-run UI edits do not drift into an active run (INV-7).
+ *   - Windows are built by the caller and passed in.
+ *   - Assembly groups regions by question_number, matches to segmentation targets,
+ *     deduplicates overlapping pages, and produces LocalizationResult[].
  */
 import type { PreparedPageImage } from '../source-model/types';
 import type { CropTargetProfile } from '../crop-target-profile/types';
-import type { SegmentationResult } from '../segmentation-contract/types';
 import type { SegmentationTarget } from '../segmentation-contract/types';
 import type { LocalizationResult } from '../localization-contract/types';
 /**
- * Contract for a localizer function.
- * Implemented in `adapters/localization/gemini-localizer`.
- * Kept here so core can type-check the dependency without importing any SDK.
- *
- * @param runId          Run identifier to embed in the result.
- * @param target         The Agent 1 SegmentationTarget to localize.
- * @param pages          All prepared page images for the run (adapter filters internally).
- * @param profile        Active crop target profile.
- * @param promptSnapshot Session-scoped prompt override (empty = built-in).
+ * Intermediate result from a single window localization call.
+ * Matches the shape produced by the adapter parser.
  */
-export type Localizer = (runId: string, target: SegmentationTarget, pages: PreparedPageImage[], profile: CropTargetProfile, promptSnapshot: string) => Promise<LocalizationResult>;
+export interface WindowLocalizationRegion {
+    question_number: string;
+    page_number: number;
+    bbox_1000: [number, number, number, number];
+}
+export interface WindowLocalizationResult {
+    run_id: string;
+    regions: WindowLocalizationRegion[];
+    review_comment?: string;
+}
 /**
- * Runs the Agent 2 localization step for all targets in the segmentation result.
- *
- * Calls the injected localizer once per target, in the reading order from
- * Agent 1. Returns results in the same order so downstream steps can rely on
- * index alignment between SegmentationResult.targets and LocalizationResult[].
- *
- * Agent 2 cannot add, remove, or reorder targets — those decisions were made
- * by Agent 1. Any attempt to drift is rejected by the parser/contract layer.
- *
- * @param runId              The current run_id (from RunContext).
- * @param segmentationResult The normalized Agent 1 result (source of target order).
- * @param pages              Prepared pages from the render step (INV-1 gate must
- *                           have run before this is called).
- * @param profile            The active crop target profile.
- * @param promptSnapshot     Session prompt override (TASK-502: wired from context.promptSnapshot).
- * @param localizer          The adapter function that performs the actual API call.
- * @returns                  Ordered LocalizationResult[] — one per target, same order
- *                           as SegmentationResult.targets.
- * @throws                   Re-throws any error from the localizer (caller handles
- *                           per-target failure continuation if needed).
+ * Contract for a window localizer function.
+ * Implemented in `adapters/localization/gemini-localizer`.
  */
-export declare function runLocalizationStep(runId: string, segmentationResult: SegmentationResult, pages: PreparedPageImage[], profile: CropTargetProfile, promptSnapshot: string, localizer: Localizer): Promise<LocalizationResult[]>;
+export type WindowLocalizer = (runId: string, questionList: ReadonlyArray<SegmentationTarget>, windowPages: PreparedPageImage[], profile: CropTargetProfile, promptSnapshot: string) => Promise<WindowLocalizationResult>;
+/**
+ * Assembles per-window results into per-target LocalizationResults.
+ *
+ * For each question in the segmentation targets:
+ *   1. Collect all regions across all windows that match by question_number.
+ *   2. Deduplicate by page_number — when the same page appears in multiple
+ *      windows, keep the bbox from the window where the page was most central
+ *      (farthest from the window edge).
+ *   3. Sort regions by page_number ascending.
+ *   4. Build LocalizationResult with target_id from the matched SegmentationTarget.
+ *
+ * @param runId           The current run_id.
+ * @param questionList    The segmentation targets (question inventory).
+ * @param windowResults   Results from all window localization calls.
+ * @param windows         The windows that were used (for centrality scoring).
+ * @returns               LocalizationResult[] — one per target that was found.
+ *                        Targets not found in any window are omitted.
+ */
+export declare function assembleLocalizationResults(runId: string, questionList: ReadonlyArray<SegmentationTarget>, windowResults: ReadonlyArray<WindowLocalizationResult>, windows: ReadonlyArray<{
+    pages: ReadonlyArray<PreparedPageImage>;
+}>): LocalizationResult[];
+/**
+ * Expands a bbox by `pad` units on each side (clamped to [0, 1000]).
+ * Acts as a safety net for minor edge clipping by the model.
+ */
+export declare function padBbox(bbox: [number, number, number, number], pad?: number): [number, number, number, number];
 //# sourceMappingURL=localization-step.d.ts.map

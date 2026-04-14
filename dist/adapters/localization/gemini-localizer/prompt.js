@@ -2,48 +2,51 @@
 /**
  * adapters/localization/gemini-localizer/prompt.ts
  *
- * Constructs the localization prompt for Agent 2 (Region Localizer).
+ * Constructs the localization prompt for Agent 3 (Region Localizer).
  *
- * The prompt is built from:
- *   - The single target being localized (target_id and its page regions).
- *   - The active crop target profile (for context on target_type).
- *   - An optional caller-supplied promptSnapshot (TASK-502 will wire this;
- *     when empty the built-in prompt text is used).
- *
- * Design:
- *   - The prompt scopes the model to ONE target at a time (per Boundary E).
- *   - It explicitly provides the expected page_numbers so the model can
- *     confirm its regions match what Agent 1 identified.
- *   - No provider SDK imports — pure string construction.
+ * Agent 3 receives a sliding window of 1-3 page images and a list of
+ * known questions. It identifies which questions are visible and returns
+ * bounding boxes. No page numbers are mentioned — only image positions
+ * (1st, 2nd, 3rd image).
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.buildLocalizationPrompt = buildLocalizationPrompt;
+exports.buildWindowLocalizationPrompt = buildWindowLocalizationPrompt;
 const default_prompts_1 = require("../../../core/prompt-config-store/default-prompts");
 /**
- * Builds the text portion of the Gemini localization prompt for one target.
+ * Builds the text portion of the Gemini localization prompt for a sliding window.
  *
- * @param target         The Agent 1 segmentation target to localize.
- * @param profile        The active crop target profile (provides target_type context).
- * @param promptSnapshot Optional session instruction block (from TASK-502 prompt store).
- *                       When empty, the built-in default instruction block is used.
- * @returns              Prompt text string to include as the first `text` part.
+ * @param questionList  The known questions from Agent 1 (question inventory).
+ * @param windowSize    Number of images in this window (1-3).
+ * @param profile       The active crop target profile.
+ * @param promptSnapshot Optional session instruction block.
  */
-function buildLocalizationPrompt(target, profile, promptSnapshot) {
+function buildWindowLocalizationPrompt(questionList, windowSize, profile, promptSnapshot) {
     const instructionBlock = promptSnapshot.trim() !== ''
         ? promptSnapshot.trim()
         : default_prompts_1.DEFAULT_AGENT2_PROMPT;
-    const regionList = target.regions
-        .map((r, i) => `  - Region ${i + 1}: Page ${r.page_number}`)
+    const questionListText = questionList
+        .map((q) => {
+        const parts = [`  - Question ${q.question_number ?? '(unknown)'}`];
+        if (q.question_text) {
+            parts.push(`    Text: ${q.question_text}`);
+        }
+        if (q.sub_questions && q.sub_questions.length > 0) {
+            parts.push(`    Sub-parts: ${q.sub_questions.join(', ')}`);
+        }
+        return parts.join('\n');
+    })
         .join('\n');
     return `${instructionBlock}
 
 ## Run Context
-- Target ID: ${target.target_id}
 - Target type: ${profile.target_type}
-- Finish page: ${target.finish_page_number ?? Math.max(...target.regions.map((r) => r.page_number))}
-- You may receive the previous page as context. Return bbox entries only for the page regions listed below.
-- Page regions to localize (in order):
-${regionList}
+- Number of images in this window: ${windowSize}
+- Use image_position to indicate which image (1 = first, 2 = second, 3 = third).
+
+## Known Questions (from earlier segmentation)
+${questionListText}
+
+For each question visible in the provided images, return its bounding box and which image it appears on.
 `;
 }
 //# sourceMappingURL=prompt.js.map

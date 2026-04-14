@@ -1,1 +1,1 @@
-{"version":3,"file":"schema.d.ts","sourceRoot":"","sources":["../../../../adapters/localization/gemini-localizer/schema.ts"],"names":[],"mappings":"AAAA;;;;;;;;;;;;;;;;;GAiBG;AAEH,sEAAsE;AACtE,eAAO,MAAM,0BAA0B;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;CA6C7B,CAAC"}
+{"version":3,"file":"schema.d.ts","sourceRoot":"","sources":["../../../../adapters/localization/gemini-localizer/schema.ts"],"names":[],"mappings":"AAAA;;;;;;;;;;;GAWG;AAEH,2DAA2D;AAC3D,wBAAgB,6BAA6B,CAAC,UAAU,GAAE,MAAU,GAAG,MAAM,CAAC,MAAM,EAAE,OAAO,CAAC,CAsD7F;AAED,uFAAuF;AACvF,eAAO,MAAM,0BAA0B,yBAAmC,CAAC"}

@@ -4,15 +4,14 @@
  *
  * Runtime validation for the normalized segmentation contract.
  *
+ * Agent 1 now produces a question inventory (no regions/page references).
  * Enforces:
- *   - Required fields (target_id, target_type, regions, page_number).
- *   - Region count limit (INV-3: 1 ≤ regions ≤ maxRegionsPerTarget).
- *   - No bbox_1000 in regions (INV-2 / PO-2 guard).
+ *   - Required fields (target_id, target_type).
  *   - Optional review_comment must be a string when present.
+ *   - Optional extraction_fields must match definitions.
  *   - Target order is preserved exactly as received.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.validateSegmentationRegion = validateSegmentationRegion;
 exports.validateSegmentationTarget = validateSegmentationTarget;
 exports.validateSegmentationResult = validateSegmentationResult;
 // ---------------------------------------------------------------------------
@@ -20,9 +19,6 @@ exports.validateSegmentationResult = validateSegmentationResult;
 // ---------------------------------------------------------------------------
 function isString(v) {
     return typeof v === 'string';
-}
-function isNumber(v) {
-    return typeof v === 'number' && isFinite(v);
 }
 function isObject(v) {
     return typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -81,89 +77,6 @@ function validateExtractionFields(raw, targetIndex, definitions) {
     }
     return values;
 }
-function validateFinishPage(raw, targetIndex, regions, options) {
-    const rawFinishPage = raw['finish_page_number'];
-    const mustHaveFinishPage = options.requireFinishPage === true ||
-        options.focusPageNumber !== undefined;
-    if (rawFinishPage === undefined) {
-        if (!mustHaveFinishPage) {
-            return undefined;
-        }
-        throw {
-            code: 'SEGMENTATION_SCHEMA_INVALID',
-            message: `targets[${targetIndex}].finish_page_number is required`,
-        };
-    }
-    if (!isNumber(rawFinishPage) ||
-        !Number.isInteger(rawFinishPage) ||
-        rawFinishPage < 1) {
-        throw {
-            code: 'SEGMENTATION_SCHEMA_INVALID',
-            message: `targets[${targetIndex}].finish_page_number must be a positive integer`,
-        };
-    }
-    const finishPage = rawFinishPage;
-    if (options.focusPageNumber !== undefined && finishPage !== options.focusPageNumber) {
-        throw {
-            code: 'SEGMENTATION_SCHEMA_INVALID',
-            message: `targets[${targetIndex}].finish_page_number must equal focus page ` +
-                `${options.focusPageNumber}, received ${finishPage}`,
-        };
-    }
-    const maxRegionPage = Math.max(...regions.map((region) => region.page_number));
-    if (maxRegionPage !== finishPage) {
-        throw {
-            code: 'SEGMENTATION_SCHEMA_INVALID',
-            message: `targets[${targetIndex}] max region page ${maxRegionPage} must equal ` +
-                `finish_page_number ${finishPage}`,
-        };
-    }
-    if (options.focusPageNumber !== undefined) {
-        const allowedPages = new Set([options.focusPageNumber, options.focusPageNumber - 1]);
-        for (const region of regions) {
-            if (!allowedPages.has(region.page_number)) {
-                throw {
-                    code: 'SEGMENTATION_SCHEMA_INVALID',
-                    message: `targets[${targetIndex}].regions contains page ${region.page_number}; ` +
-                        `focus page ${options.focusPageNumber} only allows current or previous page`,
-                };
-            }
-        }
-    }
-    return finishPage;
-}
-// ---------------------------------------------------------------------------
-// Region validation
-// ---------------------------------------------------------------------------
-/**
- * Validates a single raw region value.
- * Enforces: page_number is a positive integer, no bbox_1000 present.
- */
-function validateSegmentationRegion(raw, regionIndex, targetIndex) {
-    if (!isObject(raw)) {
-        throw {
-            code: 'SEGMENTATION_SCHEMA_INVALID',
-            message: `Target[${targetIndex}].regions[${regionIndex}] must be an object`,
-        };
-    }
-    // Guard: bbox_1000 must never appear in segmentation regions (INV-2, PO-2).
-    if ('bbox_1000' in raw) {
-        throw {
-            code: 'SEGMENTATION_SCHEMA_INVALID',
-            message: `Target[${targetIndex}].regions[${regionIndex}] must not contain bbox_1000 — ` +
-                'crop coordinates belong to Agent 2 localization (INV-2)',
-        };
-    }
-    if (!isNumber(raw['page_number']) ||
-        !Number.isInteger(raw['page_number']) ||
-        raw['page_number'] < 1) {
-        throw {
-            code: 'SEGMENTATION_SCHEMA_INVALID',
-            message: `Target[${targetIndex}].regions[${regionIndex}].page_number must be a positive integer`,
-        };
-    }
-    return { page_number: raw['page_number'] };
-}
 // ---------------------------------------------------------------------------
 // Target validation
 // ---------------------------------------------------------------------------
@@ -172,9 +85,8 @@ function validateSegmentationRegion(raw, regionIndex, targetIndex) {
  *
  * @param raw              The unknown value to validate.
  * @param targetIndex      Position in the targets array (for error messages).
- * @param maxRegions       Profile-driven max (default 2 per INV-3).
  */
-function validateSegmentationTarget(raw, targetIndex, maxRegions, options = {}) {
+function validateSegmentationTarget(raw, targetIndex, options = {}) {
     if (!isObject(raw)) {
         throw {
             code: 'SEGMENTATION_SCHEMA_INVALID',
@@ -193,28 +105,6 @@ function validateSegmentationTarget(raw, targetIndex, maxRegions, options = {}) 
             message: `targets[${targetIndex}].target_type must be a non-empty string`,
         };
     }
-    if (!isArray(raw['regions'])) {
-        throw {
-            code: 'SEGMENTATION_SCHEMA_INVALID',
-            message: `targets[${targetIndex}].regions must be an array`,
-        };
-    }
-    const rawRegions = raw['regions'];
-    if (rawRegions.length < 1) {
-        throw {
-            code: 'SEGMENTATION_SCHEMA_INVALID',
-            message: `targets[${targetIndex}].regions must have at least 1 entry`,
-        };
-    }
-    if (rawRegions.length > maxRegions) {
-        throw {
-            code: 'SEGMENTATION_SCHEMA_INVALID',
-            message: `targets[${targetIndex}].regions has ${rawRegions.length} entries but ` +
-                `the active profile allows at most ${maxRegions} (INV-3)`,
-        };
-    }
-    const regions = rawRegions.map((r, ri) => validateSegmentationRegion(r, ri, targetIndex));
-    const finishPage = validateFinishPage(raw, targetIndex, regions, options);
     const extractionFields = validateExtractionFields(raw, targetIndex, options.extractionFields ?? []);
     // Optional review_comment
     const rawComment = 'review_comment' in raw ? raw['review_comment'] : undefined;
@@ -227,16 +117,25 @@ function validateSegmentationTarget(raw, targetIndex, maxRegions, options = {}) 
     const target = {
         target_id: raw['target_id'],
         target_type: raw['target_type'],
-        regions,
     };
-    if (finishPage !== undefined) {
-        target.finish_page_number = finishPage;
-    }
     if (extractionFields !== undefined) {
         target.extraction_fields = extractionFields;
     }
     if (typeof rawComment === 'string') {
         target.review_comment = rawComment;
+    }
+    // Optional fields: question_number, question_text, sub_questions
+    if (isString(raw['question_number'])) {
+        target.question_number = raw['question_number'];
+    }
+    if (isString(raw['question_text'])) {
+        target.question_text = raw['question_text'];
+    }
+    if (isArray(raw['sub_questions'])) {
+        const subs = raw['sub_questions'];
+        if (subs.every(isString)) {
+            target.sub_questions = subs;
+        }
     }
     return target;
 }
@@ -247,11 +146,10 @@ function validateSegmentationTarget(raw, targetIndex, maxRegions, options = {}) 
  * Validates a complete raw segmentation result.
  *
  * @param raw                  The unknown value to validate.
- * @param maxRegionsPerTarget  Profile-driven max (default 2 per INV-3).
  * @returns                    A typed, validated SegmentationResult.
  * @throws                     SegmentationValidationError on any schema violation.
  */
-function validateSegmentationResult(raw, maxRegionsPerTarget = 2, options = {}) {
+function validateSegmentationResult(raw, options = {}) {
     if (!isObject(raw)) {
         throw {
             code: 'SEGMENTATION_SCHEMA_INVALID',
@@ -270,7 +168,7 @@ function validateSegmentationResult(raw, maxRegionsPerTarget = 2, options = {}) 
             message: 'Segmentation result must have a targets array',
         };
     }
-    const targets = raw['targets'].map((t, i) => validateSegmentationTarget(t, i, maxRegionsPerTarget, options));
+    const targets = raw['targets'].map((t, i) => validateSegmentationTarget(t, i, options));
     return {
         run_id: raw['run_id'],
         targets,

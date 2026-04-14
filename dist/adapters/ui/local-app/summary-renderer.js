@@ -96,7 +96,7 @@ function renderTargetRow(entry, state) {
     <td>${esc(id)}</td>
     <td>${esc(entry.target_type)}</td>
     <td>${entry.page_numbers.join(', ')}</td>
-    <td>${entry.finish_page_number ?? '—'}</td>${statusRow}
+    <td>${entry.page_numbers.length > 0 ? Math.max(...entry.page_numbers) : '—'}</td>${statusRow}
     <td>${previewCell}</td>
     <td>${driveCell}</td>
     ${customCells}
@@ -146,7 +146,7 @@ function renderTargetCard(entry, state) {
     </div>
     <div class="card-preview">${previewImg}</div>
     <div class="card-meta">
-      <span class="card-pages">Pages: ${entry.page_numbers.join(', ')}${entry.finish_page_number ? ` (ends ${entry.finish_page_number})` : ''}</span>
+      <span class="card-pages">Pages: ${entry.page_numbers.join(', ')}</span>
       ${driveLink}
       ${customFields}
       <div class="card-comments" data-testid="summary-row-ai-comments-${esc(id)}">${comments || '—'}</div>
@@ -176,6 +176,216 @@ function renderSummaryHtml(state, options) {
         return renderSplitViewHtml(state, options.sourcePdfUrl);
     }
     return renderTableHtml(state);
+}
+// ---------------------------------------------------------------------------
+// Debug panel renderer (temporary)
+// ---------------------------------------------------------------------------
+function debugPanelStyles() {
+    return `
+    .debug-panel {
+      margin: 2rem 1rem;
+      padding: 1rem 1.5rem;
+      border: 2px dashed #e67e22;
+      border-radius: 8px;
+      background: #fffbf0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+      font-size: 0.85rem;
+    }
+    .debug-panel-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+    .debug-badge {
+      background: #e67e22;
+      color: #fff;
+      font-weight: 700;
+      font-size: 0.75rem;
+      padding: 0.15rem 0.5rem;
+      border-radius: 3px;
+      letter-spacing: 0.05em;
+    }
+    .debug-panel-header h2 { font-size: 1rem; margin: 0; color: #333; }
+    .debug-panel details {
+      margin-bottom: 1rem;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      background: #fff;
+    }
+    .debug-panel details summary {
+      padding: 0.5rem 0.75rem;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.9rem;
+      background: #f7f7f7;
+      border-radius: 4px 4px 0 0;
+      user-select: none;
+    }
+    .debug-panel details[open] summary { border-bottom: 1px solid #ddd; }
+    .debug-panel .debug-content { padding: 0.75rem; }
+    .debug-panel table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 0.5rem 0;
+    }
+    .debug-panel th, .debug-panel td {
+      border: 1px solid #ddd;
+      padding: 0.3rem 0.6rem;
+      text-align: left;
+      font-size: 0.8rem;
+      vertical-align: top;
+    }
+    .debug-panel th { background: #f0f0f0; font-weight: 600; }
+    .debug-panel .debug-note { color: #666; font-style: italic; margin: 0.3rem 0; }
+    .debug-panel .debug-label { font-weight: 600; color: #555; margin-right: 0.3rem; }
+    .debug-panel .debug-pass { color: #27ae60; font-weight: 600; }
+    .debug-panel .debug-corrected { color: #c0392b; font-weight: 600; }
+    .debug-panel .debug-removed { color: #c0392b; }
+    .debug-panel .bbox-coord { font-family: monospace; font-size: 0.8rem; }
+    .debug-panel .failure-row { background: #fef0f0; }
+    .debug-panel .sub-section { margin: 0.5rem 0 0.75rem 0; }
+    .debug-panel .sub-section h4 { font-size: 0.85rem; margin: 0 0 0.3rem 0; color: #444; }
+  `;
+}
+function renderDebugPanel(debug) {
+    return `
+  <div class="debug-panel" data-testid="debug-panel">
+    <div class="debug-panel-header">
+      <span class="debug-badge">DEBUG</span>
+      <h2>Pipeline Internals</h2>
+    </div>
+    ${renderAgent1Section(debug)}
+    ${renderReviewSection(debug)}
+    ${renderAgent2Section(debug)}
+    ${renderDeduplicationSection(debug)}
+  </div>`;
+}
+function renderAgent1Section(debug) {
+    const chunkRows = debug.agent1ChunkResults.map((c) => {
+        const targetRows = c.targets.length === 0
+            ? '<tr><td colspan="5" class="debug-note">No targets found in this chunk</td></tr>'
+            : c.targets.map((t) => {
+                return `<tr>
+            <td>${esc(t.target_id)}</td>
+            <td>${esc(t.question_number ?? '—')}</td>
+            <td>${esc((t.question_text ?? '').slice(0, 80))}${(t.question_text?.length ?? 0) > 80 ? '...' : ''}</td>
+            <td>${(t.sub_questions ?? []).join(', ') || '—'}</td>
+            <td>${t.review_comment ? esc(t.review_comment) : '—'}</td>
+          </tr>`;
+            }).join('');
+        return `
+    <div class="sub-section">
+      <h4>Chunk ${c.chunkIndex}: Pages ${c.startPage}–${c.endPage}</h4>
+      <p><span class="debug-label">Context pages:</span> ${c.contextPageNumbers.join(', ')}</p>
+      <table>
+        <thead><tr>
+          <th>Target ID</th><th>Q#</th><th>Question Text</th><th>Sub-Qs</th><th>Review Comment</th>
+        </tr></thead>
+        <tbody>${targetRows}</tbody>
+      </table>
+    </div>`;
+    }).join('');
+    return `
+  <details>
+    <summary>1. Agent 1 — Segmentation Outputs (${debug.agent1ChunkResults.length} chunks)</summary>
+    <div class="debug-content">${chunkRows}</div>
+  </details>`;
+}
+function renderReviewSection(debug) {
+    const reviewRows = debug.reviewChunkResults.map((r) => {
+        const badge = r.corrected
+            ? '<span class="debug-corrected">CORRECTED</span>'
+            : '<span class="debug-pass">PASS</span>';
+        const targetRows = r.targets.map((t) => {
+            return `<tr>
+        <td>${esc(t.target_id)}</td>
+        <td>${esc(t.question_number ?? '—')}</td>
+        <td>${t.review_comment ? esc(t.review_comment) : '—'}</td>
+      </tr>`;
+        }).join('');
+        return `
+    <div class="sub-section">
+      <h4>Chunk ${r.chunkIndex}: ${badge} (${r.targets.length} targets)</h4>
+      <table>
+        <thead><tr><th>Target ID</th><th>Q#</th><th>Review Comment</th></tr></thead>
+        <tbody>${targetRows}</tbody>
+      </table>
+    </div>`;
+    }).join('');
+    return `
+  <details>
+    <summary>2. Agent 2 — Segmentation Review (${debug.reviewChunkResults.length} chunks)</summary>
+    <div class="debug-content">${reviewRows}</div>
+  </details>`;
+}
+function renderAgent2Section(debug) {
+    const resultRows = debug.localizationResults.length === 0
+        ? '<tr><td colspan="4" class="debug-note">No localization results</td></tr>'
+        : debug.localizationResults.flatMap((lr) => lr.regions.map((r, ri) => `<tr>
+          <td>${ri === 0 ? esc(lr.target_id) : ''}</td>
+          <td>${r.page_number}</td>
+          <td class="bbox-coord">[y: ${r.bbox_1000[0]}–${r.bbox_1000[2]}, x: ${r.bbox_1000[1]}–${r.bbox_1000[3]}]</td>
+          <td>${ri === 0 && lr.review_comment ? esc(lr.review_comment) : ri === 0 ? '—' : ''}</td>
+        </tr>`)).join('');
+    const failureRows = debug.localizationFailures.length === 0
+        ? ''
+        : `<div class="sub-section">
+        <h4>Localization Failures (${debug.localizationFailures.length})</h4>
+        <table>
+          <thead><tr><th>Target ID</th><th>Source Pages</th><th>Failure Code</th><th>Message</th></tr></thead>
+          <tbody>${debug.localizationFailures.map((f) => `<tr class="failure-row">
+            <td>${esc(f.targetId)}</td>
+            <td>${f.sourcePages.join(', ')}</td>
+            <td>${esc(f.failureCode)}</td>
+            <td>${esc(f.failureMessage)}</td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>`;
+    return `
+  <details>
+    <summary>4. Agent 2 — Localization Outputs (${debug.localizationResults.length} targets)</summary>
+    <div class="debug-content">
+      <table>
+        <thead><tr><th>Target ID</th><th>Page</th><th>BBox (y/x ranges, 0–1000)</th><th>Review Comment</th></tr></thead>
+        <tbody>${resultRows}</tbody>
+      </table>
+      ${failureRows}
+    </div>
+  </details>`;
+}
+function renderDeduplicationSection(debug) {
+    if (!debug.deduplicationResult) {
+        return `
+    <details>
+      <summary>5. Agent 4 — Deduplication (skipped — single chunk)</summary>
+      <div class="debug-content">
+        <p class="debug-note">No deduplication needed — document was processed in a single chunk.</p>
+      </div>
+    </details>`;
+    }
+    const logRows = (debug.deduplicationMergeLog ?? []).map((entry) => `<tr>
+    <td>${esc(entry.action)}</td>
+    <td>${esc(entry.result_target_id)}</td>
+    <td>${entry.source_target_ids.map((id) => esc(id)).join(', ')}</td>
+    <td>${entry.source_chunks.join(', ')}</td>
+    <td>${esc(entry.reason)}</td>
+  </tr>`).join('');
+    return `
+  <details>
+    <summary>5. Agent 4 — Deduplication (${debug.deduplicationResult.targets.length} final targets)</summary>
+    <div class="debug-content">
+      <p><span class="debug-label">Input targets (pre-dedup):</span> ${debug.localizationResults.length}</p>
+      <p><span class="debug-label">Output targets (post-dedup):</span> ${debug.deduplicationResult.targets.length}</p>
+      <div class="sub-section">
+        <h4>Merge Log (${debug.deduplicationMergeLog?.length ?? 0} actions)</h4>
+        <table>
+          <thead><tr><th>Action</th><th>Result ID</th><th>Source IDs</th><th>Source Chunks</th><th>Reason</th></tr></thead>
+          <tbody>${logRows || '<tr><td colspan="5" class="debug-note">No merge actions taken</td></tr>'}</tbody>
+        </table>
+      </div>
+    </div>
+  </details>`;
 }
 function renderSplitViewHtml(state, sourcePdfUrl) {
     const cards = state.targets.map((entry) => renderTargetCard(entry, state)).join('');
@@ -253,6 +463,7 @@ function renderSplitViewHtml(state, sourcePdfUrl) {
     .card-hidden { display: none; }
     .comment-compat { display: none; }
     a { color: #0066cc; }
+    ${state.debugData ? debugPanelStyles() : ''}
   </style>
 </head>
 <body>
@@ -270,6 +481,7 @@ function renderSplitViewHtml(state, sourcePdfUrl) {
       <embed type="application/pdf" src="${esc(sourcePdfUrl)}" data-testid="source-pdf-embed">
     </div>
   </div>
+  ${state.debugData ? renderDebugPanel(state.debugData) : ''}
 </body>
 </html>`;
 }
@@ -295,6 +507,7 @@ function renderTableHtml(state) {
     a { color: #0066cc; }
     .nav { margin-bottom: 1.2rem; font-size: 0.875rem; }
     .comment-compat { display: none; }
+    ${state.debugData ? debugPanelStyles() : ''}
   </style>
 </head>
 <body>
@@ -322,6 +535,7 @@ function renderTableHtml(state) {
     <tbody>${rows}
     </tbody>
   </table>
+  ${state.debugData ? renderDebugPanel(state.debugData) : ''}
 </body>
 </html>`;
 }

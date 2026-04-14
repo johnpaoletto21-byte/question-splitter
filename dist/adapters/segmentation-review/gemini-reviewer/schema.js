@@ -2,7 +2,7 @@
 /**
  * adapters/segmentation-review/gemini-reviewer/schema.ts
  *
- * Gemini structured output response schema for Agent 1.5 (reviewer).
+ * Gemini structured output response schema for Agent 2 (reviewer).
  */
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.buildGeminiReviewSchema = buildGeminiReviewSchema;
@@ -10,7 +10,6 @@ const schema_1 = require("../../segmentation/gemini-segmenter/schema");
 function buildGeminiReviewSchema(input = {}) {
     const segSchema = (0, schema_1.buildGeminiSegmentationSchema)({
         extractionFields: input.extractionFields,
-        requireFinishPage: true,
     });
     const targetsSchema = segSchema['properties']['targets'];
     return {

@@ -17,24 +17,29 @@ exports.buildRunSummaryFromSegmentation = buildRunSummaryFromSegmentation;
 exports.applyLocalizationToSummary = applyLocalizationToSummary;
 exports.applyFinalResultsToSummary = applyFinalResultsToSummary;
 /**
- * Builds a RunSummaryState from a normalized SegmentationResult.
+ * Builds a RunSummaryState from a normalized SegmentationResult plus
+ * optional localization results (for page_numbers).
  *
  * - Sets agent1_status = 'needs_review' when review_comment is present.
  * - Includes review_comment in the entry for UI display.
- * - Extracts page_numbers from regions[] to avoid re-parsing downstream.
+ * - page_numbers come from localizedResults if provided, otherwise empty.
  * - Preserves target order from the segmentation result (reading order).
  */
-function buildRunSummaryFromSegmentation(result, extractionFields = []) {
+function buildRunSummaryFromSegmentation(result, extractionFields = [], localizedResults) {
+    // Build a lookup for page_numbers from localization results
+    const pageNumbersByTarget = new Map();
+    if (localizedResults) {
+        for (const loc of localizedResults) {
+            pageNumbersByTarget.set(loc.target_id, loc.regions.map((r) => r.page_number));
+        }
+    }
     const targets = result.targets.map((t) => {
         const entry = {
             target_id: t.target_id,
             target_type: t.target_type,
-            page_numbers: t.regions.map((r) => r.page_number),
+            page_numbers: pageNumbersByTarget.get(t.target_id) ?? [],
             agent1_status: t.review_comment !== undefined ? 'needs_review' : 'ok',
         };
-        if (t.finish_page_number !== undefined) {
-            entry.finish_page_number = t.finish_page_number;
-        }
         if (t.extraction_fields !== undefined) {
             entry.extraction_fields = t.extraction_fields;
         }

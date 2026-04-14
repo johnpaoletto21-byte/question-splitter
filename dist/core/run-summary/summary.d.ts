@@ -17,14 +17,15 @@ import type { FinalResultRow } from '../result-model/types';
 import type { RunSummaryState } from './types';
 import type { ExtractionFieldDefinition } from '../extraction-fields';
 /**
- * Builds a RunSummaryState from a normalized SegmentationResult.
+ * Builds a RunSummaryState from a normalized SegmentationResult plus
+ * optional localization results (for page_numbers).
  *
  * - Sets agent1_status = 'needs_review' when review_comment is present.
  * - Includes review_comment in the entry for UI display.
- * - Extracts page_numbers from regions[] to avoid re-parsing downstream.
+ * - page_numbers come from localizedResults if provided, otherwise empty.
  * - Preserves target order from the segmentation result (reading order).
  */
-export declare function buildRunSummaryFromSegmentation(result: SegmentationResult, extractionFields?: ReadonlyArray<ExtractionFieldDefinition>): RunSummaryState;
+export declare function buildRunSummaryFromSegmentation(result: SegmentationResult, extractionFields?: ReadonlyArray<ExtractionFieldDefinition>, localizedResults?: ReadonlyArray<LocalizationResult>): RunSummaryState;
 /**
  * Returns a new RunSummaryState with the target entry for the given
  * LocalizationResult updated to include Agent 2 status fields.

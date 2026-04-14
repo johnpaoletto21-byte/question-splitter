@@ -28,10 +28,15 @@ export declare function setAgent1Prompt(prompt: string): void;
  */
 export declare function setReviewerPrompt(prompt: string): void;
 /**
- * Updates the Agent 2 (localizer) prompt for the current session.
+ * Updates the Agent 3 (localizer) prompt for the current session.
  * Does not affect any active run — runs use their start-time snapshot.
  */
 export declare function setAgent2Prompt(prompt: string): void;
+/**
+ * Updates the Agent 4 (deduplicator) prompt for the current session.
+ * Does not affect any active run — runs use their start-time snapshot.
+ */
+export declare function setDeduplicatorPrompt(prompt: string): void;
 /**
  * Captures an immutable snapshot of the current prompt state.
  * Called by the orchestrator at run start (bootstrapRun).

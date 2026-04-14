@@ -3,40 +3,31 @@
  *
  * Runtime validation for the normalized segmentation contract.
  *
+ * Agent 1 now produces a question inventory (no regions/page references).
  * Enforces:
- *   - Required fields (target_id, target_type, regions, page_number).
- *   - Region count limit (INV-3: 1 ≤ regions ≤ maxRegionsPerTarget).
- *   - No bbox_1000 in regions (INV-2 / PO-2 guard).
+ *   - Required fields (target_id, target_type).
  *   - Optional review_comment must be a string when present.
+ *   - Optional extraction_fields must match definitions.
  *   - Target order is preserved exactly as received.
  */
-import type { SegmentationRegion, SegmentationResult, SegmentationTarget } from './types';
+import type { SegmentationResult, SegmentationTarget } from './types';
 import type { ExtractionFieldDefinition } from '../extraction-fields';
 export interface SegmentationValidationOptions {
     extractionFields?: ReadonlyArray<ExtractionFieldDefinition>;
-    focusPageNumber?: number;
-    requireFinishPage?: boolean;
 }
-/**
- * Validates a single raw region value.
- * Enforces: page_number is a positive integer, no bbox_1000 present.
- */
-export declare function validateSegmentationRegion(raw: unknown, regionIndex: number, targetIndex: number): SegmentationRegion;
 /**
  * Validates a single raw target value.
  *
  * @param raw              The unknown value to validate.
  * @param targetIndex      Position in the targets array (for error messages).
- * @param maxRegions       Profile-driven max (default 2 per INV-3).
  */
-export declare function validateSegmentationTarget(raw: unknown, targetIndex: number, maxRegions: number, options?: SegmentationValidationOptions): SegmentationTarget;
+export declare function validateSegmentationTarget(raw: unknown, targetIndex: number, options?: SegmentationValidationOptions): SegmentationTarget;
 /**
  * Validates a complete raw segmentation result.
  *
  * @param raw                  The unknown value to validate.
- * @param maxRegionsPerTarget  Profile-driven max (default 2 per INV-3).
  * @returns                    A typed, validated SegmentationResult.
  * @throws                     SegmentationValidationError on any schema violation.
  */
-export declare function validateSegmentationResult(raw: unknown, maxRegionsPerTarget?: number, options?: SegmentationValidationOptions): SegmentationResult;
+export declare function validateSegmentationResult(raw: unknown, options?: SegmentationValidationOptions): SegmentationResult;
 //# sourceMappingURL=validation.d.ts.map

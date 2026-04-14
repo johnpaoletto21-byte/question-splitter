@@ -3,6 +3,8 @@
  *
  * Parses the Gemini reviewer output into null (pass) or SegmentationResult (corrected).
  * Same validation as Agent 1 via validateSegmentationResult.
+ *
+ * Agent 1 and Reviewer now produce question inventories (no regions).
  */
 import type { SegmentationResult } from '../../../core/segmentation-contract/types';
 import type { ExtractionFieldDefinition } from '../../../core/extraction-fields';
