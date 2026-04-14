@@ -2,7 +2,13 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { createCanvas, loadImage } from 'canvas';
-import { makeCanvasCropExecutor, makeCanvasImageStacker } from '../canvas-images';
+import {
+  makeCanvasCropExecutor,
+  makeCanvasImageStacker,
+  cropImageToFile,
+  drawDiagramOverlayToFile,
+  getImageDimensions,
+} from '../canvas-images';
 import type { PreparedPageImage } from '../../../core/source-model/types';
 
 function writePng(filePath: string, width: number, height: number, color: string): void {
@@ -108,5 +114,62 @@ describe('canvas image adapters', () => {
     expect(fs.existsSync(outPath)).toBe(true);
     expect(image.width).toBe(40);
     expect(image.height).toBe(45);
+  });
+
+  describe('cropImageToFile (diagram-only cropper)', () => {
+    it('writes diagram_<index>.png with the padded crop dimensions', async () => {
+      const outPath = await cropImageToFile(page.image_path, tmpDir, 1, {
+        x: 20,
+        y: 30,
+        width: 40,
+        height: 25,
+      });
+      const image = await loadImage(outPath);
+      expect(fs.existsSync(outPath)).toBe(true);
+      expect(path.basename(outPath)).toBe('diagram_01.png');
+      // 4-px pad on every side, clamped to image bounds (interior crop here).
+      expect(image.width).toBe(48);
+      expect(image.height).toBe(33);
+    });
+
+    it('clamps the padded crop at image edges', async () => {
+      const outPath = await cropImageToFile(page.image_path, tmpDir, 7, {
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 80,
+      });
+      const image = await loadImage(outPath);
+      expect(path.basename(outPath)).toBe('diagram_07.png');
+      expect(image.width).toBe(100);
+      expect(image.height).toBe(80);
+    });
+  });
+
+  describe('drawDiagramOverlayToFile', () => {
+    it('writes overlay.png with the same dimensions as the source', async () => {
+      const outPath = await drawDiagramOverlayToFile(page.image_path, tmpDir, [
+        { diagram_index: 1, pixelRect: { x: 10, y: 10, width: 30, height: 20 } },
+        { diagram_index: 2, pixelRect: { x: 50, y: 40, width: 30, height: 30 } },
+      ]);
+      const image = await loadImage(outPath);
+      expect(path.basename(outPath)).toBe('overlay.png');
+      expect(image.width).toBe(100);
+      expect(image.height).toBe(80);
+    });
+
+    it('writes overlay.png even when no rects are supplied', async () => {
+      const outPath = await drawDiagramOverlayToFile(page.image_path, tmpDir, []);
+      const image = await loadImage(outPath);
+      expect(image.width).toBe(100);
+      expect(image.height).toBe(80);
+    });
+  });
+
+  describe('getImageDimensions', () => {
+    it('returns the pixel dimensions of a PNG on disk', async () => {
+      const dims = await getImageDimensions(page.image_path);
+      expect(dims).toEqual({ width: 100, height: 80 });
+    });
   });
 });

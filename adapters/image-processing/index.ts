@@ -1,1 +1,7 @@
-export { makeCanvasCropExecutor, makeCanvasImageStacker } from './canvas-images';
+export {
+  makeCanvasCropExecutor,
+  makeCanvasImageStacker,
+  cropImageToFile,
+  drawDiagramOverlayToFile,
+  getImageDimensions,
+} from './canvas-images';

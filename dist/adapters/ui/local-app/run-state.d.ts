@@ -6,6 +6,7 @@
 import type { RunSummaryState } from '../../../core/run-summary/types';
 import type { ExtractionFieldDefinition } from '../../../core/extraction-fields';
 import type { PromptSnapshot } from '../../../core/prompt-config-store/types';
+import type { DiagramRunResult } from '../../../core/diagram-detection/types';
 export type LocalRunStatus = 'queued' | 'running' | 'succeeded' | 'failed';
 export interface LocalRunLogEntry {
     timestamp: string;
@@ -42,4 +43,28 @@ export declare function markRunStatus(id: string, status: LocalRunStatus): void;
 export declare function markRunSucceeded(id: string, summary: RunSummaryState): void;
 export declare function markRunFailed(id: string, error: string, failureContext?: unknown): void;
 export declare function resetRunRecordsForTests(): void;
+export interface LocalDiagramRunRecord {
+    id: string;
+    status: LocalRunStatus;
+    imageFileName?: string;
+    imageFilePath?: string;
+    outputDir?: string;
+    runOutputDir?: string;
+    createdAt: string;
+    updatedAt: string;
+    logs: LocalRunLogEntry[];
+    result?: DiagramRunResult;
+    error?: string;
+}
+export declare function createDiagramRunRecord(input: {
+    imageFileName?: string;
+    imageFilePath?: string;
+    outputDir?: string;
+    runOutputDir?: string;
+}): LocalDiagramRunRecord;
+export declare function getDiagramRunRecord(id: string): LocalDiagramRunRecord | undefined;
+export declare function appendDiagramRunLog(id: string, stage: string, message: string, timestamp?: string): void;
+export declare function markDiagramRunStatus(id: string, status: LocalRunStatus): void;
+export declare function markDiagramRunSucceeded(id: string, result: DiagramRunResult): void;
+export declare function markDiagramRunFailed(id: string, error: string): void;
 //# sourceMappingURL=run-state.d.ts.map
