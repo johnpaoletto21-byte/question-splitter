@@ -25,21 +25,25 @@
 import * as http from 'http';
 import { parsePdfUpload } from './upload-handler';
 import { parseDiagramUpload } from './diagram-upload-handler';
+import { parseHintUpload } from './hint-upload-handler';
 import { loadConfig } from '../../config/local-config/loader';
-import type { RunFullPipelineInput, RunDiagramPipelineInput } from '../../run-pipeline';
+import type { RunFullPipelineInput, RunDiagramPipelineInput, RunHintPipelineInput, HintPipelineResult } from '../../run-pipeline';
 import type { DiagramRunResult } from '../../../core/diagram-detection/types';
 declare const PREVIEW_PORT: number;
 declare const PREVIEW_PATH = "/summary-preview";
 declare const PROMPT_EDIT_PATH = "/prompt-edit";
 declare const RUN_PATH = "/run";
 declare const DIAGRAM_RUN_PATH = "/run-diagrams";
+declare const HINT_RUN_PATH = "/run-hints";
 interface PreviewServerOptions {
     loadConfigFn?: typeof loadConfig;
     parsePdfUploadFn?: typeof parsePdfUpload;
     runFullPipelineFn?: (input: RunFullPipelineInput) => Promise<import('../../../core/run-summary/types').RunSummaryState>;
     parseDiagramUploadFn?: typeof parseDiagramUpload;
     runDiagramPipelineFn?: (input: RunDiagramPipelineInput) => Promise<DiagramRunResult>;
+    parseHintUploadFn?: typeof parseHintUpload;
+    runHintPipelineFn?: (input: RunHintPipelineInput) => Promise<HintPipelineResult>;
 }
 declare function createPreviewServer(options?: PreviewServerOptions): http.Server;
-export { createPreviewServer, PREVIEW_PORT, PREVIEW_PATH, PROMPT_EDIT_PATH, RUN_PATH, DIAGRAM_RUN_PATH };
+export { createPreviewServer, PREVIEW_PORT, PREVIEW_PATH, PROMPT_EDIT_PATH, RUN_PATH, DIAGRAM_RUN_PATH, HINT_RUN_PATH };
 //# sourceMappingURL=preview-server.d.ts.map

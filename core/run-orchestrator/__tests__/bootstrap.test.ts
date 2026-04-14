@@ -51,6 +51,9 @@ describe('bootstrapRun — run context creation', () => {
       reviewerPrompt: 'provided reviewer',
       agent2Prompt: 'provided agent 2',
       deduplicatorPrompt: 'provided deduplicator',
+      hintImageGenPrompt: '',
+      hintOverlayPrompt: '',
+      hintBlendRenderPrompt: '',
       capturedAt: '2024-01-01T00:00:00.000Z',
     };
     const ctx = bootstrapRun(makeRequest({ promptSnapshot }));

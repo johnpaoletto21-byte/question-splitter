@@ -7,6 +7,7 @@ import type { RunSummaryState } from '../../../core/run-summary/types';
 import type { ExtractionFieldDefinition } from '../../../core/extraction-fields';
 import type { PromptSnapshot } from '../../../core/prompt-config-store/types';
 import type { DiagramRunResult } from '../../../core/diagram-detection/types';
+import type { HintAnnotationMethod, HintPipelineResult } from '../../run-pipeline/hint-pipeline-runner';
 export type LocalRunStatus = 'queued' | 'running' | 'succeeded' | 'failed';
 export interface LocalRunLogEntry {
     timestamp: string;
@@ -67,4 +68,32 @@ export declare function appendDiagramRunLog(id: string, stage: string, message: 
 export declare function markDiagramRunStatus(id: string, status: LocalRunStatus): void;
 export declare function markDiagramRunSucceeded(id: string, result: DiagramRunResult): void;
 export declare function markDiagramRunFailed(id: string, error: string): void;
+export interface LocalHintRunRecord {
+    id: string;
+    status: LocalRunStatus;
+    imageFileName?: string;
+    imageFilePath?: string;
+    hintText?: string;
+    method?: HintAnnotationMethod;
+    outputDir?: string;
+    runOutputDir?: string;
+    createdAt: string;
+    updatedAt: string;
+    logs: LocalRunLogEntry[];
+    result?: HintPipelineResult;
+    error?: string;
+}
+export declare function createHintRunRecord(input: {
+    imageFileName?: string;
+    imageFilePath?: string;
+    hintText?: string;
+    method?: HintAnnotationMethod;
+    outputDir?: string;
+    runOutputDir?: string;
+}): LocalHintRunRecord;
+export declare function getHintRunRecord(id: string): LocalHintRunRecord | undefined;
+export declare function appendHintRunLog(id: string, stage: string, message: string, timestamp?: string): void;
+export declare function markHintRunStatus(id: string, status: LocalRunStatus): void;
+export declare function markHintRunSucceeded(id: string, result: HintPipelineResult): void;
+export declare function markHintRunFailed(id: string, error: string): void;
 //# sourceMappingURL=run-state.d.ts.map

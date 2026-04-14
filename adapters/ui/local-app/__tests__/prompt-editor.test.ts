@@ -28,6 +28,9 @@ function makeState(overrides: Partial<PromptConfigState> = {}): PromptConfigStat
     reviewerPrompt: '',
     agent2Prompt: '',
     deduplicatorPrompt: '',
+    hintImageGenPrompt: '',
+    hintOverlayPrompt: '',
+    hintBlendRenderPrompt: '',
     ...overrides,
   };
 }

@@ -18,6 +18,9 @@ exports.setAgent1Prompt = setAgent1Prompt;
 exports.setReviewerPrompt = setReviewerPrompt;
 exports.setAgent2Prompt = setAgent2Prompt;
 exports.setDeduplicatorPrompt = setDeduplicatorPrompt;
+exports.setHintImageGenPrompt = setHintImageGenPrompt;
+exports.setHintOverlayPrompt = setHintOverlayPrompt;
+exports.setHintBlendRenderPrompt = setHintBlendRenderPrompt;
 exports.capturePromptSnapshot = capturePromptSnapshot;
 exports.resetPromptConfig = resetPromptConfig;
 const default_prompts_1 = require("./default-prompts");
@@ -30,6 +33,9 @@ const DEFAULT_STATE = {
     reviewerPrompt: default_prompts_1.DEFAULT_REVIEWER_PROMPT,
     agent2Prompt: default_prompts_1.DEFAULT_AGENT2_PROMPT,
     deduplicatorPrompt: default_prompts_1.DEFAULT_DEDUPLICATOR_PROMPT,
+    hintImageGenPrompt: default_prompts_1.DEFAULT_HINT_IMAGE_GEN_PROMPT,
+    hintOverlayPrompt: default_prompts_1.DEFAULT_HINT_OVERLAY_PROMPT,
+    hintBlendRenderPrompt: default_prompts_1.DEFAULT_HINT_BLEND_RENDER_PROMPT,
 };
 /** Live session state — mutable only through the exported setters. */
 let _state = { ...DEFAULT_STATE };
@@ -69,6 +75,24 @@ function setDeduplicatorPrompt(prompt) {
     _state = { ..._state, deduplicatorPrompt: prompt };
 }
 /**
+ * Updates the Agent H1 (hint image generation) prompt for the current session.
+ */
+function setHintImageGenPrompt(prompt) {
+    _state = { ..._state, hintImageGenPrompt: prompt };
+}
+/**
+ * Updates the Agent H2 (hint overlay / JSON annotation) prompt for the current session.
+ */
+function setHintOverlayPrompt(prompt) {
+    _state = { ..._state, hintOverlayPrompt: prompt };
+}
+/**
+ * Updates the Agent H3 (hint blend render) prompt for the current session.
+ */
+function setHintBlendRenderPrompt(prompt) {
+    _state = { ..._state, hintBlendRenderPrompt: prompt };
+}
+/**
  * Captures an immutable snapshot of the current prompt state.
  * Called by the orchestrator at run start (bootstrapRun).
  *
@@ -83,6 +107,9 @@ function capturePromptSnapshot() {
         reviewerPrompt: _state.reviewerPrompt,
         agent2Prompt: _state.agent2Prompt,
         deduplicatorPrompt: _state.deduplicatorPrompt,
+        hintImageGenPrompt: _state.hintImageGenPrompt,
+        hintOverlayPrompt: _state.hintOverlayPrompt,
+        hintBlendRenderPrompt: _state.hintBlendRenderPrompt,
         capturedAt: new Date().toISOString(),
     });
 }

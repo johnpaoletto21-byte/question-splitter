@@ -6,7 +6,7 @@
  * Dynamic run context is appended by the adapter prompt builders.
  */
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.DEFAULT_DEDUPLICATOR_PROMPT = exports.DEFAULT_DIAGRAM_DETECTOR_PROMPT = exports.DEFAULT_AGENT2_PROMPT = exports.DEFAULT_REVIEWER_PROMPT = exports.DEFAULT_AGENT1_PROMPT = void 0;
+exports.DEFAULT_DEDUPLICATOR_PROMPT = exports.DEFAULT_HINT_BLEND_RENDER_PROMPT = exports.DEFAULT_HINT_OVERLAY_PROMPT = exports.DEFAULT_HINT_IMAGE_GEN_PROMPT = exports.DEFAULT_DIAGRAM_DETECTOR_PROMPT = exports.DEFAULT_AGENT2_PROMPT = exports.DEFAULT_REVIEWER_PROMPT = exports.DEFAULT_AGENT1_PROMPT = void 0;
 exports.DEFAULT_AGENT1_PROMPT = `You are Agent 1: Question Segmenter for an exam-paper processing pipeline.
 
 ## Task
@@ -70,7 +70,10 @@ Do not include a targets array.
 Return: {"verdict": "corrected", "targets": [...]}
 - Return targets in reading order.
 - Use the target_type from the run context.
-- Add a review_comment on corrected targets explaining what you changed.`;
+- Add a review_comment on corrected targets explaining what you changed.
+
+## Answer Sheet Detection
+If any pages are dedicated answer sheets (pages containing mostly answer boxes or grids for multiple questions, not question content), list their 1-based page numbers in answer_sheet_pages. These pages will be excluded from question crops. Return an empty array if no answer sheets are found.`;
 exports.DEFAULT_AGENT2_PROMPT = `You are Agent 3: Region Localizer for an exam-paper processing pipeline.
 
 ## Task
@@ -93,6 +96,10 @@ Return bbox_1000 as [y_min, x_min, y_max, x_max] on a 0-1000 normalized scale.
 - Check all four edges of each diagram/figure to ensure nothing is clipped.
 - If a diagram extends to the edge of the page, set that edge of the bbox to 0 or 1000 as appropriate.
 
+## How to determine y_max (bottom edge)
+- Do NOT try to find the bottom edge of the question's content. Instead, set y_max to where the NEXT question's header begins on the same page (minus a small gap). If no other question follows on the page, set y_max to 1000 (page bottom).
+- This ensures that diagrams, figures, and 3D shapes positioned below the question text are never cut off, even when they are large and extend far below the last line of text.
+
 ## Rules
 - For each question visible in these images, return one entry per image it appears on.
 - Use image_position (1, 2, or 3) to indicate which image the bounding box is on: 1 = first image, 2 = second image, 3 = third image.
@@ -103,7 +110,13 @@ Return bbox_1000 as [y_min, x_min, y_max, x_max] on a 0-1000 normalized scale.
 - On continuation pages (where a question continues from a previous page), the bounding box must extend from the top of the question content all the way to where the next question begins, or to the bottom of the page content if no other question follows.
 - It is far better to include extra whitespace than to cut off any part of a diagram, figure, graph, or table.
 - When a question has visual elements (diagrams, graphs, geometric figures, tables), scan the ENTIRE page for content belonging to that question before drawing the bbox. Do not stop at the first text block.
+- Many exam pages use multi-column layouts where a single question's sub-parts are arranged side-by-side in columns rather than top-to-bottom. Before drawing a bounding box, scan the FULL WIDTH of the page for all sub-questions and content belonging to the same parent question. The bbox must span all columns containing content for that question.
+- Do NOT include dedicated answer sheet pages or simple answer input boxes (small blank rectangles where students write a number or short answer). However, DO include workspace elements that are part of the question: dotted grids, graph paper, construction lines, or template shapes provided for students to work with. These are question content, not answer blanks. When including workspace elements, ensure the bounding box also encompasses all related question text, sub-question labels, and instructions that appear near them on the same page.
 - If a target boundary is ambiguous, include a review_comment.
+
+## Common mistakes to avoid
+- Setting y_max too low, cutting off diagrams, figures, or dimension labels (e.g. "10cm", "図1") that sit below the question text. Always look for visual content below the last line of text before choosing y_max.
+- Forgetting that 3D figures, geometric diagrams, and their captions can extend far below the question text — sometimes occupying more vertical space than the text itself.
 
 Analyze the images and return bounding boxes for every visible question.`;
 exports.DEFAULT_DIAGRAM_DETECTOR_PROMPT = `You are Agent D: Diagram Detector.
@@ -137,7 +150,12 @@ Return bbox_1000 as [y_min, x_min, y_max, x_max] on a 0-1000 normalized scale.
 - Captions like "図1", "図2", "Fig. 1" if they appear directly above or below the diagram.
 - Axis labels, units (e.g. "cm", "1段目"), point labels (e.g. "P", "Q", "R", "A", "B").
 - Arrows and any small annotations within ~5% of the drawing.
-- A small whitespace margin around the visible content on every side.
+- A generous whitespace margin around the visible content on every side. It is much worse to clip a label than to include a little extra whitespace.
+- Try not to extend the bounding box into adjacent paragraph or question text.
+
+## Common mistakes to avoid
+- Cutting off vertex labels (A, B, C, P, Q) at the bottom or sides of geometric figures — always verify these are inside the box.
+- Returning a box that is too tight around the main shape, missing small annotations or arrows near the edges.
 
 ## Reading order
 Return diagrams in natural reading order: top-to-bottom first, then left-to-right for diagrams at similar vertical positions. Each diagram becomes one entry with a sequential \`diagram_index\` starting at 1.
@@ -146,6 +164,30 @@ Return diagrams in natural reading order: top-to-bottom first, then left-to-righ
 - If the image contains diagrams: return one entry per diagram in the \`diagrams\` array.
 - If the image contains zero diagrams (e.g. text-only question or answer-box-only orphan crop): return an empty \`diagrams\` array. Do NOT invent diagrams to fill the response.
 - Add a brief \`label\` per diagram if a caption is visible (e.g. "図1", "Fig. 2").`;
+exports.DEFAULT_HINT_IMAGE_GEN_PROMPT = `You are a Japanese maths teacher and you have a red marker pen.
+Generate an image of the exact same size as the attached image.
+Do not change the original image in any way; just draw on it with your red marker to show the student the first step to solving it.`;
+exports.DEFAULT_HINT_OVERLAY_PROMPT = `You are a Japanese maths teacher. You receive an image of a maths diagram and a hint from the teacher describing what to draw on it.
+Convert the teacher's hint into precise drawing instructions.
+
+Return annotations as an array of drawing instructions. Each instruction has a "type" and coordinates in bbox_1000 format (0-1000 normalized to image dimensions).
+
+Supported types:
+- {"type": "line", "from": [x, y], "to": [x, y]} — a straight red line
+- {"type": "arrow", "from": [x, y], "to": [x, y]} — a red arrow (arrowhead at "to")
+- {"type": "arc", "center": [x, y], "radius": r, "startAngle": deg, "endAngle": deg} — a red arc
+- {"type": "text", "position": [x, y], "content": "..."} — a short red text label
+
+Draw exactly what the teacher's hint describes. Use at most 5-8 instructions.
+If no hint is provided, analyze the diagram and show the first step to solving the problem.`;
+exports.DEFAULT_HINT_BLEND_RENDER_PROMPT = `You are a Japanese maths teacher and you have a red marker pen.
+Generate an image of the exact same size as the attached image.
+Do not change the original image in any way.
+Draw EXACTLY the following annotations on it in red marker:
+
+{annotations_json}
+
+Draw each annotation precisely at the specified coordinates. Use a natural hand-drawn red marker style.`;
 exports.DEFAULT_DEDUPLICATOR_PROMPT = `You are Agent 4: Question Deduplicator for an exam-paper processing pipeline.
 
 ## Task

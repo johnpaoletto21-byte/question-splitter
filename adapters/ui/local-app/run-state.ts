@@ -8,6 +8,7 @@ import type { RunSummaryState } from '../../../core/run-summary/types';
 import type { ExtractionFieldDefinition } from '../../../core/extraction-fields';
 import type { PromptSnapshot } from '../../../core/prompt-config-store/types';
 import type { DiagramRunResult } from '../../../core/diagram-detection/types';
+import type { HintAnnotationMethod, HintPipelineResult } from '../../run-pipeline/hint-pipeline-runner';
 
 export type LocalRunStatus = 'queued' | 'running' | 'succeeded' | 'failed';
 
@@ -122,6 +123,7 @@ export function markRunFailed(id: string, error: string, failureContext?: unknow
 export function resetRunRecordsForTests(): void {
   runs.clear();
   diagramRuns.clear();
+  hintRuns.clear();
 }
 
 // ---------------------------------------------------------------------------
@@ -210,6 +212,106 @@ export function markDiagramRunSucceeded(id: string, result: DiagramRunResult): v
 
 export function markDiagramRunFailed(id: string, error: string): void {
   const record = diagramRuns.get(id);
+  if (!record) {
+    return;
+  }
+  record.status = 'failed';
+  record.error = error;
+  record.updatedAt = nowIso();
+}
+
+// ---------------------------------------------------------------------------
+// Hint annotator run records
+// ---------------------------------------------------------------------------
+
+export interface LocalHintRunRecord {
+  id: string;
+  status: LocalRunStatus;
+  imageFileName?: string;
+  imageFilePath?: string;
+  hintText?: string;
+  method?: HintAnnotationMethod;
+  outputDir?: string;
+  runOutputDir?: string;
+  createdAt: string;
+  updatedAt: string;
+  logs: LocalRunLogEntry[];
+  result?: HintPipelineResult;
+  error?: string;
+}
+
+const hintRuns = new Map<string, LocalHintRunRecord>();
+
+function makeHintRunId(): string {
+  const random = Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0');
+  return `local_hint_run_${Date.now()}_${random}`;
+}
+
+export function createHintRunRecord(input: {
+  imageFileName?: string;
+  imageFilePath?: string;
+  hintText?: string;
+  method?: HintAnnotationMethod;
+  outputDir?: string;
+  runOutputDir?: string;
+}): LocalHintRunRecord {
+  const timestamp = nowIso();
+  const record: LocalHintRunRecord = {
+    id: makeHintRunId(),
+    status: 'queued',
+    imageFileName: input.imageFileName,
+    imageFilePath: input.imageFilePath,
+    hintText: input.hintText,
+    method: input.method,
+    outputDir: input.outputDir,
+    runOutputDir: input.runOutputDir,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    logs: [],
+  };
+  hintRuns.set(record.id, record);
+  return record;
+}
+
+export function getHintRunRecord(id: string): LocalHintRunRecord | undefined {
+  return hintRuns.get(id);
+}
+
+export function appendHintRunLog(
+  id: string,
+  stage: string,
+  message: string,
+  timestamp: string = nowIso(),
+): void {
+  const record = hintRuns.get(id);
+  if (!record) {
+    return;
+  }
+  record.logs.push({ stage, message, timestamp });
+  record.updatedAt = timestamp;
+}
+
+export function markHintRunStatus(id: string, status: LocalRunStatus): void {
+  const record = hintRuns.get(id);
+  if (!record) {
+    return;
+  }
+  record.status = status;
+  record.updatedAt = nowIso();
+}
+
+export function markHintRunSucceeded(id: string, result: HintPipelineResult): void {
+  const record = hintRuns.get(id);
+  if (!record) {
+    return;
+  }
+  record.status = 'succeeded';
+  record.result = result;
+  record.updatedAt = nowIso();
+}
+
+export function markHintRunFailed(id: string, error: string): void {
+  const record = hintRuns.get(id);
   if (!record) {
     return;
   }

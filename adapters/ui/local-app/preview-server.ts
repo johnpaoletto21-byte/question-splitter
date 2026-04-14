@@ -44,6 +44,12 @@ import {
   markDiagramRunStatus,
   markDiagramRunSucceeded,
   markDiagramRunFailed,
+  createHintRunRecord,
+  getHintRunRecord,
+  appendHintRunLog,
+  markHintRunStatus,
+  markHintRunSucceeded,
+  markHintRunFailed,
 } from './run-state';
 import { parsePdfUpload, MAX_UPLOAD_BYTES } from './upload-handler';
 import {
@@ -57,18 +63,33 @@ import {
   renderDiagramErrorHtml,
 } from './diagram-renderer';
 import {
+  renderHintFormHtml,
+  renderHintStatusHtml,
+  renderHintResultsHtml,
+  renderHintErrorHtml,
+} from './hint-renderer';
+import {
+  parseHintUpload,
+  MAX_HINT_UPLOAD_BYTES,
+} from './hint-upload-handler';
+import {
   getPromptConfig,
   capturePromptSnapshot,
   setAgent1Prompt,
   setReviewerPrompt,
   setAgent2Prompt,
+  setHintImageGenPrompt,
+  setHintOverlayPrompt,
+  setHintBlendRenderPrompt,
 } from '../../../core/prompt-config-store/store';
 import { loadConfig } from '../../config/local-config/loader';
 import { ConfigMissingError, LocalConfig } from '../../config/local-config/types';
-import { runFullPipeline, runDiagramPipeline } from '../../run-pipeline';
+import { runFullPipeline, runDiagramPipeline, runHintPipeline } from '../../run-pipeline';
 import type {
   RunFullPipelineInput,
   RunDiagramPipelineInput,
+  RunHintPipelineInput,
+  HintPipelineResult,
 } from '../../run-pipeline';
 import type { RunSummaryState } from '../../../core/run-summary/types';
 import type { DiagramRunResult } from '../../../core/diagram-detection/types';
@@ -80,6 +101,7 @@ const PREVIEW_PATH = '/summary-preview';
 const PROMPT_EDIT_PATH = '/prompt-edit';
 const RUN_PATH = '/run';
 const DIAGRAM_RUN_PATH = '/run-diagrams';
+const HINT_RUN_PATH = '/run-hints';
 
 interface PreviewServerOptions {
   loadConfigFn?: typeof loadConfig;
@@ -87,6 +109,8 @@ interface PreviewServerOptions {
   runFullPipelineFn?: (input: RunFullPipelineInput) => Promise<import('../../../core/run-summary/types').RunSummaryState>;
   parseDiagramUploadFn?: typeof parseDiagramUpload;
   runDiagramPipelineFn?: (input: RunDiagramPipelineInput) => Promise<DiagramRunResult>;
+  parseHintUploadFn?: typeof parseHintUpload;
+  runHintPipelineFn?: (input: RunHintPipelineInput) => Promise<HintPipelineResult>;
 }
 
 /**
@@ -259,12 +283,39 @@ function startDiagramRun(
     });
 }
 
+function startHintRun(
+  recordId: string,
+  input: RunHintPipelineInput,
+  runHintPipelineFn: PreviewServerOptions['runHintPipelineFn'],
+): void {
+  markHintRunStatus(recordId, 'running');
+  appendHintRunLog(recordId, 'app', 'Hint run queued from browser upload');
+
+  const wrappedInput: RunHintPipelineInput = {
+    ...input,
+    onLog: (event) => appendHintRunLog(recordId, event.stage, event.message, event.timestamp),
+  };
+
+  void runHintPipelineFn!(wrappedInput)
+    .then((result) => {
+      appendHintRunLog(recordId, 'app', 'Hint run completed');
+      markHintRunSucceeded(recordId, result);
+    })
+    .catch((err: unknown) => {
+      const message = formatUnknownError(err);
+      appendHintRunLog(recordId, 'app', `Hint run failed: ${message}`);
+      markHintRunFailed(recordId, message);
+    });
+}
+
 function createPreviewServer(options: PreviewServerOptions = {}): http.Server {
   const loadConfigFn = options.loadConfigFn ?? loadConfig;
   const parsePdfUploadFn = options.parsePdfUploadFn ?? parsePdfUpload;
   const runFullPipelineFn = options.runFullPipelineFn ?? runFullPipeline;
   const parseDiagramUploadFn = options.parseDiagramUploadFn ?? parseDiagramUpload;
   const runDiagramPipelineFn = options.runDiagramPipelineFn ?? runDiagramPipeline;
+  const parseHintUploadFn = options.parseHintUploadFn ?? parseHintUpload;
+  const runHintPipelineFn = options.runHintPipelineFn ?? runHintPipeline;
 
   return http.createServer((req, res) => {
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
@@ -466,9 +517,15 @@ function createPreviewServer(options: PreviewServerOptions = {}): http.Server {
         const agent1 = params.get('agent1Prompt') ?? '';
         const reviewer = params.get('reviewerPrompt') ?? '';
         const agent2 = params.get('agent2Prompt') ?? '';
+        const hintImageGen = params.get('hintImageGenPrompt') ?? '';
+        const hintOverlay = params.get('hintOverlayPrompt') ?? '';
+        const hintBlendRender = params.get('hintBlendRenderPrompt') ?? '';
         setAgent1Prompt(agent1);
         setReviewerPrompt(reviewer);
         setAgent2Prompt(agent2);
+        setHintImageGenPrompt(hintImageGen);
+        setHintOverlayPrompt(hintOverlay);
+        setHintBlendRenderPrompt(hintBlendRender);
         // Redirect back to GET to show the saved state (POST-Redirect-GET pattern).
         res.writeHead(302, { Location: PROMPT_EDIT_PATH });
         res.end();
@@ -611,11 +668,144 @@ function createPreviewServer(options: PreviewServerOptions = {}): http.Server {
       return;
     }
 
+    // ── GET /run-hints ────────────────────────────────────────────────────
+    if (req.method === 'GET' && url.pathname === HINT_RUN_PATH) {
+      try {
+        const loaded = loadConfigForForm(loadConfigFn);
+        writeHtml(res, 200, renderHintFormHtml({
+          configReady: loaded.config !== undefined,
+          missingKeys: loaded.missingKeys,
+          maxUploadMb: MAX_HINT_UPLOAD_BYTES / (1024 * 1024),
+        }));
+      } catch (err) {
+        const message = formatUnknownError(err);
+        writeHtml(res, 500, renderHintErrorHtml('Config Error', message));
+      }
+      return;
+    }
+
+    // ── POST /run-hints ─────────────────────────────────────────────────
+    if (req.method === 'POST' && url.pathname === HINT_RUN_PATH) {
+      let config: LocalConfig;
+      try {
+        config = loadConfigFn();
+      } catch (err) {
+        req.resume();
+        if (err instanceof ConfigMissingError) {
+          writeHtml(res, 400, renderHintErrorHtml(
+            'Config Missing',
+            `Missing config: ${err.missingKeys.join(', ')}`,
+          ));
+          return;
+        }
+        const message = formatUnknownError(err);
+        writeHtml(res, 500, renderHintErrorHtml('Config Error', message));
+        return;
+      }
+
+      parseHintUploadFn(req, config.OUTPUT_DIR)
+        .then((upload) => {
+          const runOutputDir = path.join(
+            config.OUTPUT_DIR,
+            'hint-runs',
+            `hint_${Date.now()}`,
+          );
+          const record = createHintRunRecord({
+            imageFileName: upload.originalFileName,
+            imageFilePath: upload.imageFilePath,
+            hintText: upload.hintText,
+            method: upload.method,
+            outputDir: config.OUTPUT_DIR,
+            runOutputDir,
+          });
+          appendHintRunLog(
+            record.id,
+            'upload',
+            `Uploaded ${upload.originalFileName}`,
+          );
+          if (upload.hintText) {
+            appendHintRunLog(record.id, 'upload', `Hint: ${upload.hintText}`);
+          }
+          appendHintRunLog(record.id, 'upload', `Method: ${upload.method}`);
+          startHintRun(
+            record.id,
+            {
+              sourceImagePath: upload.imageFilePath,
+              outputDir: runOutputDir,
+              config,
+              method: upload.method,
+              hintText: upload.hintText,
+            },
+            runHintPipelineFn,
+          );
+          redirect(res, `/hint-runs/${record.id}`);
+        })
+        .catch((err: unknown) => {
+          const message = formatUnknownError(err);
+          const statusCode = typeof (err as { statusCode?: unknown }).statusCode === 'number'
+            ? (err as { statusCode: number }).statusCode
+            : 400;
+          writeHtml(res, statusCode, renderHintErrorHtml('Upload Error', message));
+        });
+      return;
+    }
+
+    // ── GET /hint-runs/:id/result ───────────────────────────────────────
+    const hintResultMatch = url.pathname.match(/^\/hint-runs\/([^/]+)\/result$/);
+    if (req.method === 'GET' && hintResultMatch) {
+      const record = getHintRunRecord(hintResultMatch[1]);
+      if (
+        !record ||
+        !record.result?.annotatedImagePath ||
+        !record.runOutputDir ||
+        !isPathInsideDirectory(record.result.annotatedImagePath, record.runOutputDir) ||
+        !fs.existsSync(record.result.annotatedImagePath)
+      ) {
+        writeHtml(res, 404, renderHintErrorHtml('Result Not Found', `No result for ${hintResultMatch[1]}`));
+        return;
+      }
+      writePng(res, record.result.annotatedImagePath);
+      return;
+    }
+
+    // ── GET /hint-runs/:id/source ───────────────────────────────────────
+    const hintSourceMatch = url.pathname.match(/^\/hint-runs\/([^/]+)\/source$/);
+    if (req.method === 'GET' && hintSourceMatch) {
+      const record = getHintRunRecord(hintSourceMatch[1]);
+      if (
+        !record ||
+        !record.imageFilePath ||
+        !fs.existsSync(record.imageFilePath)
+      ) {
+        writeHtml(res, 404, renderHintErrorHtml('Source Not Found', `No source for ${hintSourceMatch[1]}`));
+        return;
+      }
+      writePng(res, record.imageFilePath);
+      return;
+    }
+
+    // ── GET /hint-runs/:id ──────────────────────────────────────────────
+    const hintRunMatch = url.pathname.match(/^\/hint-runs\/([^/]+)$/);
+    if (req.method === 'GET' && hintRunMatch) {
+      const record = getHintRunRecord(hintRunMatch[1]);
+      if (!record) {
+        writeHtml(res, 404, renderHintErrorHtml('Run Not Found', `No hint run for ${hintRunMatch[1]}`));
+        return;
+      }
+      if (record.status === 'succeeded' && record.result) {
+        writeHtml(res, 200, renderHintResultsHtml(record));
+      } else {
+        writeHtml(res, 200, renderHintStatusHtml(record));
+      }
+      return;
+    }
+
     // ── 404 for anything else ─────────────────────────────────────────────
     const msg = [
       `Not found. Available routes:`,
       `  http://localhost:${PREVIEW_PORT}${RUN_PATH}`,
       `  http://localhost:${PREVIEW_PORT}${DIAGRAM_RUN_PATH}`,
+      `  http://localhost:${PREVIEW_PORT}${HINT_RUN_PATH}`,
       `  http://localhost:${PREVIEW_PORT}${PREVIEW_PATH}`,
       `  http://localhost:${PREVIEW_PORT}${PROMPT_EDIT_PATH}`,
       '',
@@ -625,7 +815,7 @@ function createPreviewServer(options: PreviewServerOptions = {}): http.Server {
   });
 }
 
-export { createPreviewServer, PREVIEW_PORT, PREVIEW_PATH, PROMPT_EDIT_PATH, RUN_PATH, DIAGRAM_RUN_PATH };
+export { createPreviewServer, PREVIEW_PORT, PREVIEW_PATH, PROMPT_EDIT_PATH, RUN_PATH, DIAGRAM_RUN_PATH, HINT_RUN_PATH };
 
 if (require.main === module) {
   const server = createPreviewServer();
