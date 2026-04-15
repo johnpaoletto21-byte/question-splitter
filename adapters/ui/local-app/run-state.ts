@@ -237,6 +237,7 @@ export interface LocalHintRunRecord {
   updatedAt: string;
   logs: LocalRunLogEntry[];
   result?: HintPipelineResult;
+  allResults?: Partial<Record<HintAnnotationMethod, HintPipelineResult>>;
   error?: string;
 }
 
@@ -307,6 +308,19 @@ export function markHintRunSucceeded(id: string, result: HintPipelineResult): vo
   }
   record.status = 'succeeded';
   record.result = result;
+  record.updatedAt = nowIso();
+}
+
+export function markHintRunAllSucceeded(
+  id: string,
+  allResults: Partial<Record<HintAnnotationMethod, HintPipelineResult>>,
+): void {
+  const record = hintRuns.get(id);
+  if (!record) {
+    return;
+  }
+  record.status = 'succeeded';
+  record.allResults = allResults;
   record.updatedAt = nowIso();
 }
 

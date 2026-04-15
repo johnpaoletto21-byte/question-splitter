@@ -63,7 +63,8 @@ function renderDiagramFormHtml(input) {
   <h1>Crop Diagrams</h1>
   <div class="nav">
     <a href="/run">← Back to Question Pipeline</a> |
-    <a href="/prompt-edit">Edit Prompts</a>
+    <a href="/prompt-edit">Edit Prompts</a> |
+    <a href="/run-hints">Hint Annotator</a>
   </div>
   <p>Upload a single PNG of a previously cropped exam question. Each diagram inside it will be cropped into its own PNG.</p>
   ${configBlock}

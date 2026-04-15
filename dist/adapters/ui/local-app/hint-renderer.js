@@ -13,6 +13,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.renderHintFormHtml = renderHintFormHtml;
 exports.renderHintStatusHtml = renderHintStatusHtml;
 exports.renderHintResultsHtml = renderHintResultsHtml;
+exports.renderHintAllResultsHtml = renderHintAllResultsHtml;
 exports.renderHintErrorHtml = renderHintErrorHtml;
 function esc(raw) {
     return raw
@@ -46,8 +47,18 @@ function baseStyles() {
     .comparison .panel { border: 1px solid #ddd; padding: 0.5rem; background: #fafafa; }
     .comparison .panel img { max-width: 100%; height: auto; display: block; }
     .comparison .panel-title { font-weight: bold; font-size: 0.9rem; margin-bottom: 0.4rem; }
+    .comparison-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; margin-top: 1rem; }
+    .comparison-4 .panel { border: 1px solid #ddd; padding: 0.5rem; background: #fafafa; }
+    .comparison-4 .panel img { max-width: 100%; height: auto; display: block; }
+    .comparison-4 .panel-title { font-weight: bold; font-size: 0.85rem; margin-bottom: 0.4rem; }
+    .comparison-4 .panel.failed { border-color: #ef9a9a; background: #ffebee; }
+    .comparison-4 .panel .error-msg { font-size: 0.8rem; color: #c62828; }
+    @media (max-width: 900px) {
+      .comparison-4 { grid-template-columns: repeat(2, 1fr); }
+    }
     @media (max-width: 700px) {
       .comparison { grid-template-columns: 1fr; }
+      .comparison-4 { grid-template-columns: 1fr; }
     }
   `;
 }
@@ -102,6 +113,7 @@ function renderHintFormHtml(input) {
     <div class="notice warn">Maximum upload size: ${input.maxUploadMb} MB.</div>
 
     <button type="submit" data-testid="hint-start-button"${disabled}>Annotate Diagram</button>
+    <button type="submit" name="method" value="all" data-testid="hint-run-all-button"${disabled} style="margin-left: 0.75rem;">Run All Three Methods</button>
   </form>
 </body>
 </html>`;
@@ -196,6 +208,78 @@ function renderHintResultsHtml(record) {
   </div>
 
   <p style="margin-top: 1rem;"><a href="/hint-runs/${esc(record.id)}/result" download="annotated.png" data-testid="hint-download-link">Download annotated image</a></p>
+
+  <h2>Logs</h2>
+  <pre class="logs" data-testid="hint-run-logs">${esc(renderLogsBlock(record))}</pre>
+</body>
+</html>`;
+}
+function renderHintAllResultsHtml(record) {
+    const allResults = record.allResults;
+    if (!allResults) {
+        return renderHintStatusHtml(record);
+    }
+    const methods = [
+        { key: 'overlay', label: 'Canvas Overlay' },
+        { key: 'image-gen', label: 'Image Generation' },
+        { key: 'blend', label: 'Blend' },
+    ];
+    const successCount = methods.filter((m) => allResults[m.key]).length;
+    const failCount = methods.length - successCount;
+    const summary = `<div class="notice ok" data-testid="hint-all-summary">${successCount} of 3 methods succeeded${failCount > 0 ? `, ${failCount} failed` : ''}.</div>`;
+    const panels = [];
+    // Original panel
+    panels.push(`
+    <div class="panel">
+      <div class="panel-title">Original</div>
+      <img src="/hint-runs/${esc(record.id)}/source" alt="Original diagram" data-testid="hint-all-source">
+    </div>
+  `);
+    // One panel per method
+    for (const m of methods) {
+        const result = allResults[m.key];
+        if (result) {
+            panels.push(`
+        <div class="panel">
+          <div class="panel-title">${esc(m.label)}</div>
+          <img src="/hint-runs/${esc(record.id)}/result/${esc(m.key)}" alt="${esc(m.label)}" data-testid="hint-all-result-${esc(m.key)}">
+          <div style="margin-top: 0.4rem; font-size: 0.8rem;"><a href="/hint-runs/${esc(record.id)}/result/${esc(m.key)}" download="${esc(m.key)}-annotated.png">Download</a></div>
+        </div>
+      `);
+        }
+        else {
+            panels.push(`
+        <div class="panel failed">
+          <div class="panel-title">${esc(m.label)}</div>
+          <div class="error-msg">This method failed.</div>
+        </div>
+      `);
+        }
+    }
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hint Results (All Three) \u2014 ${esc(record.id)}</title>
+  <style>${baseStyles()}</style>
+</head>
+<body>
+  <h1>Hint Results \u2014 All Three Methods</h1>
+  <div class="nav">
+    <a href="/run-hints">Annotate Another</a> |
+    <a href="/run">Question Pipeline</a> |
+    <a href="/run-diagrams">Diagram Cropper</a>
+  </div>
+  ${record.imageFileName ? `<p><strong>Source:</strong> ${esc(record.imageFileName)}</p>` : ''}
+  ${record.hintText ? `<p><strong>Hint:</strong> ${esc(record.hintText)}</p>` : ''}
+
+  ${summary}
+
+  <div class="notice info">Review annotations for accuracy before sharing with students.</div>
+
+  <h2>Comparison</h2>
+  <div class="comparison-4">${panels.join('')}</div>
 
   <h2>Logs</h2>
   <pre class="logs" data-testid="hint-run-logs">${esc(renderLogsBlock(record))}</pre>

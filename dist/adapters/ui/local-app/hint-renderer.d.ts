@@ -16,5 +16,6 @@ export declare function renderHintFormHtml(input: {
 }): string;
 export declare function renderHintStatusHtml(record: LocalHintRunRecord): string;
 export declare function renderHintResultsHtml(record: LocalHintRunRecord): string;
+export declare function renderHintAllResultsHtml(record: LocalHintRunRecord): string;
 export declare function renderHintErrorHtml(title: string, message: string): string;
 //# sourceMappingURL=hint-renderer.d.ts.map

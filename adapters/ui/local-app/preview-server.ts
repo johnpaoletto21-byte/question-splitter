@@ -49,6 +49,7 @@ import {
   appendHintRunLog,
   markHintRunStatus,
   markHintRunSucceeded,
+  markHintRunAllSucceeded,
   markHintRunFailed,
 } from './run-state';
 import { parsePdfUpload, MAX_UPLOAD_BYTES } from './upload-handler';
@@ -66,6 +67,7 @@ import {
   renderHintFormHtml,
   renderHintStatusHtml,
   renderHintResultsHtml,
+  renderHintAllResultsHtml,
   renderHintErrorHtml,
 } from './hint-renderer';
 import {
@@ -306,6 +308,50 @@ function startHintRun(
       appendHintRunLog(recordId, 'app', `Hint run failed: ${message}`);
       markHintRunFailed(recordId, message);
     });
+}
+
+function startHintRunAll(
+  recordId: string,
+  baseInput: Omit<RunHintPipelineInput, 'method' | 'onLog'>,
+  runHintPipelineFn: PreviewServerOptions['runHintPipelineFn'],
+): void {
+  markHintRunStatus(recordId, 'running');
+  appendHintRunLog(recordId, 'app', 'Running all three annotation methods in parallel');
+
+  const methods: Array<'overlay' | 'image-gen' | 'blend'> = ['overlay', 'image-gen', 'blend'];
+  const promises = methods.map((method) => {
+    const methodOutputDir = path.join(baseInput.outputDir, method);
+    return runHintPipelineFn!({
+      ...baseInput,
+      method,
+      outputDir: methodOutputDir,
+      onLog: (event) =>
+        appendHintRunLog(recordId, `${method}/${event.stage}`, event.message, event.timestamp),
+    });
+  });
+
+  void Promise.allSettled(promises).then((results) => {
+    const allResults: Partial<Record<string, import('../../run-pipeline/hint-pipeline-runner').HintPipelineResult>> = {};
+    const errors: string[] = [];
+    methods.forEach((method, i) => {
+      const r = results[i];
+      if (r.status === 'fulfilled') {
+        allResults[method] = r.value;
+        appendHintRunLog(recordId, 'app', `${method}: completed`);
+      } else {
+        const message = formatUnknownError(r.reason);
+        errors.push(`${method}: ${message}`);
+        appendHintRunLog(recordId, 'app', `${method}: failed — ${message}`);
+      }
+    });
+
+    if (Object.keys(allResults).length > 0) {
+      appendHintRunLog(recordId, 'app', `All methods finished. ${Object.keys(allResults).length}/3 succeeded.`);
+      markHintRunAllSucceeded(recordId, allResults);
+    } else {
+      markHintRunFailed(recordId, `All methods failed: ${errors.join('; ')}`);
+    }
+  });
 }
 
 function createPreviewServer(options: PreviewServerOptions = {}): http.Server {
@@ -727,17 +773,30 @@ function createPreviewServer(options: PreviewServerOptions = {}): http.Server {
             appendHintRunLog(record.id, 'upload', `Hint: ${upload.hintText}`);
           }
           appendHintRunLog(record.id, 'upload', `Method: ${upload.method}`);
-          startHintRun(
-            record.id,
-            {
-              sourceImagePath: upload.imageFilePath,
-              outputDir: runOutputDir,
-              config,
-              method: upload.method,
-              hintText: upload.hintText,
-            },
-            runHintPipelineFn,
-          );
+          if (upload.method === 'all') {
+            startHintRunAll(
+              record.id,
+              {
+                sourceImagePath: upload.imageFilePath,
+                outputDir: runOutputDir,
+                config,
+                hintText: upload.hintText,
+              },
+              runHintPipelineFn,
+            );
+          } else {
+            startHintRun(
+              record.id,
+              {
+                sourceImagePath: upload.imageFilePath,
+                outputDir: runOutputDir,
+                config,
+                method: upload.method,
+                hintText: upload.hintText,
+              },
+              runHintPipelineFn,
+            );
+          }
           redirect(res, `/hint-runs/${record.id}`);
         })
         .catch((err: unknown) => {
@@ -747,6 +806,26 @@ function createPreviewServer(options: PreviewServerOptions = {}): http.Server {
             : 400;
           writeHtml(res, statusCode, renderHintErrorHtml('Upload Error', message));
         });
+      return;
+    }
+
+    // ── GET /hint-runs/:id/result/:method ─────────────────────────────
+    const hintMethodResultMatch = url.pathname.match(/^\/hint-runs\/([^/]+)\/result\/(overlay|image-gen|blend)$/);
+    if (req.method === 'GET' && hintMethodResultMatch) {
+      const record = getHintRunRecord(hintMethodResultMatch[1]);
+      const method = hintMethodResultMatch[2];
+      const methodResult = record?.allResults?.[method as keyof typeof record.allResults];
+      if (
+        !record ||
+        !methodResult?.annotatedImagePath ||
+        !record.runOutputDir ||
+        !isPathInsideDirectory(methodResult.annotatedImagePath, record.runOutputDir) ||
+        !fs.existsSync(methodResult.annotatedImagePath)
+      ) {
+        writeHtml(res, 404, renderHintErrorHtml('Result Not Found', `No ${method} result for ${hintMethodResultMatch[1]}`));
+        return;
+      }
+      writePng(res, methodResult.annotatedImagePath);
       return;
     }
 
@@ -792,7 +871,9 @@ function createPreviewServer(options: PreviewServerOptions = {}): http.Server {
         writeHtml(res, 404, renderHintErrorHtml('Run Not Found', `No hint run for ${hintRunMatch[1]}`));
         return;
       }
-      if (record.status === 'succeeded' && record.result) {
+      if (record.status === 'succeeded' && record.allResults) {
+        writeHtml(res, 200, renderHintAllResultsHtml(record));
+      } else if (record.status === 'succeeded' && record.result) {
         writeHtml(res, 200, renderHintResultsHtml(record));
       } else {
         writeHtml(res, 200, renderHintStatusHtml(record));

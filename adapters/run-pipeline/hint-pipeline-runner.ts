@@ -31,7 +31,7 @@ import {
   DEFAULT_HINT_BLEND_RENDER_PROMPT,
 } from '../../core/prompt-config-store/default-prompts';
 
-export type HintAnnotationMethod = 'image-gen' | 'overlay' | 'blend';
+export type HintAnnotationMethod = 'image-gen' | 'overlay' | 'blend' | 'all';
 
 export interface PipelineLogEvent {
   stage: string;

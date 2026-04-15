@@ -81,6 +81,7 @@ export interface LocalHintRunRecord {
     updatedAt: string;
     logs: LocalRunLogEntry[];
     result?: HintPipelineResult;
+    allResults?: Partial<Record<HintAnnotationMethod, HintPipelineResult>>;
     error?: string;
 }
 export declare function createHintRunRecord(input: {
@@ -95,5 +96,6 @@ export declare function getHintRunRecord(id: string): LocalHintRunRecord | undef
 export declare function appendHintRunLog(id: string, stage: string, message: string, timestamp?: string): void;
 export declare function markHintRunStatus(id: string, status: LocalRunStatus): void;
 export declare function markHintRunSucceeded(id: string, result: HintPipelineResult): void;
+export declare function markHintRunAllSucceeded(id: string, allResults: Partial<Record<HintAnnotationMethod, HintPipelineResult>>): void;
 export declare function markHintRunFailed(id: string, error: string): void;
 //# sourceMappingURL=run-state.d.ts.map

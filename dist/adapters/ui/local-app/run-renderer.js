@@ -55,7 +55,8 @@ function renderRunFormHtml(input) {
   <div class="nav">
     <a href="/summary-preview">Preview Summary</a> |
     <a href="/prompt-edit">Edit Prompts</a> |
-    <a href="/run-diagrams">Crop Diagrams Instead →</a>
+    <a href="/run-diagrams">Crop Diagrams Instead →</a> |
+    <a href="/run-hints">Hint Annotator</a>
   </div>
   ${configBlock}
   <form method="POST" action="/run" enctype="multipart/form-data" data-testid="run-upload-form">
