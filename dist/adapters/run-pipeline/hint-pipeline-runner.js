@@ -98,11 +98,20 @@ async function runHintPipeline(input, deps = {}) {
         }
         case 'blend': {
             emit(input.onLog, 'annotate', 'Method: Blend (JSON reasoning + image generation)');
+            if (input.overlayPromptOverride?.trim()) {
+                emit(input.onLog, 'annotate', 'Step 1: using custom overlay prompt');
+            }
+            if (input.overlaySchemaOverride) {
+                emit(input.onLog, 'annotate', 'Step 1: using custom response schema');
+            }
+            if (input.blendRenderPromptOverride?.trim()) {
+                emit(input.onLog, 'render', 'Step 2: using custom blend render prompt');
+            }
             // Step 1: Get structured annotations via JSON
             const overlayPrompt = appendHint(resolvePrompt(input.overlayPromptOverride, default_prompts_1.DEFAULT_HINT_OVERLAY_PROMPT), input.hintText);
             emit(input.onLog, 'annotate', 'Step 1: Calling Gemini for annotation instructions (JSON)');
             const overlayFn = deps.overlay ?? gemini_hint_overlay_1.getHintAnnotations;
-            const overlayResult = await overlayFn(input.sourceImagePath, overlayPrompt, apiConfig);
+            const overlayResult = await overlayFn(input.sourceImagePath, overlayPrompt, apiConfig, input.overlaySchemaOverride);
             emit(input.onLog, 'annotate', `Step 1 complete: ${overlayResult.annotations.length} annotation instruction(s)`);
             // Step 2: Feed annotations to image generation model
             const annotationsJson = JSON.stringify(overlayResult.annotations, null, 2);

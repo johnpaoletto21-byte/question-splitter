@@ -171,6 +171,9 @@ function createHintRunRecord(input) {
         createdAt: timestamp,
         updatedAt: timestamp,
         logs: [],
+        blendOverlayPrompt: input.blendOverlayPrompt,
+        blendOverlaySchema: input.blendOverlaySchema,
+        blendRenderPrompt: input.blendRenderPrompt,
     };
     hintRuns.set(record.id, record);
     return record;

@@ -35,12 +35,17 @@ export interface RunHintPipelineInput {
     overlayPromptOverride?: string;
     /** Override the default blend render prompt. */
     blendRenderPromptOverride?: string;
+    /**
+     * Override the default JSON response schema used for blend step 1
+     * (overlay annotation call). Only honoured when method === 'blend'.
+     */
+    overlaySchemaOverride?: Record<string, unknown>;
     onLog?: (event: PipelineLogEvent) => void;
 }
 /** Image generation function signature. */
 export type ImageGenFn = (sourceImagePath: string, promptText: string, config: GeminiHintImageGenConfig, outputPath: string) => Promise<HintImageGenResult>;
 /** JSON annotation function signature. */
-export type OverlayFn = (sourceImagePath: string, promptText: string, config: GeminiHintOverlayConfig) => Promise<HintOverlayResult>;
+export type OverlayFn = (sourceImagePath: string, promptText: string, config: GeminiHintOverlayConfig, responseSchema?: Record<string, unknown>) => Promise<HintOverlayResult>;
 /** Canvas render function signature. */
 export type CanvasRenderFn = (sourceImagePath: string, annotations: HintOverlayResult['annotations'], outputPath: string) => Promise<void>;
 export interface RunHintPipelineDependencies {

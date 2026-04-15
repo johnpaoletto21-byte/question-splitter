@@ -8,7 +8,7 @@
  * drawing instructions (lines, arrows, arcs, text) in bbox_1000 coordinates.
  */
 import type { GeminiHintOverlayConfig, HttpPostFn, HintOverlayResult } from './types';
-export declare const DEFAULT_HINT_OVERLAY_MODEL = "gemini-2.5-flash-preview";
+export declare const DEFAULT_HINT_OVERLAY_MODEL = "gemini-3.1-flash-lite-preview";
 export declare function encodeImageAsBase64(imagePath: string): string;
 export declare function buildGeminiHintOverlayRequest(promptText: string, imagePath: string, encodeFn?: (path: string) => string, responseSchema?: Record<string, unknown>): Record<string, unknown>;
 export declare function unwrapGeminiOverlayResponse(raw: unknown): unknown;
@@ -18,8 +18,9 @@ export declare function unwrapGeminiOverlayResponse(raw: unknown): unknown;
  * @param sourceImagePath  Absolute path to the source PNG.
  * @param promptText       Final prompt text (with hint already appended by caller).
  * @param config           Gemini API key and optional model name.
+ * @param responseSchema   Optional JSON schema override for Gemini's responseSchema constraint.
  * @param httpPost         Injectable HTTP client.
  * @param encodeFn         Injectable image encoder.
  */
-export declare function getHintAnnotations(sourceImagePath: string, promptText: string, config: GeminiHintOverlayConfig, httpPost?: HttpPostFn, encodeFn?: (path: string) => string): Promise<HintOverlayResult>;
+export declare function getHintAnnotations(sourceImagePath: string, promptText: string, config: GeminiHintOverlayConfig, responseSchema?: Record<string, unknown>, httpPost?: HttpPostFn, encodeFn?: (path: string) => string): Promise<HintOverlayResult>;
 //# sourceMappingURL=annotator.d.ts.map
