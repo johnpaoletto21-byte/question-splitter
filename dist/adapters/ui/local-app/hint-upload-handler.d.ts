@@ -12,6 +12,12 @@ export interface ParsedHintUpload {
     originalFileName: string;
     hintText?: string;
     method: HintAnnotationMethod;
+    /** Raw textarea value for the blend step-1 (overlay) prompt override. */
+    blendOverlayPrompt?: string;
+    /** Raw textarea value for the blend step-1 response schema (JSON text). */
+    blendOverlaySchema?: string;
+    /** Raw textarea value for the blend step-2 (render) prompt override. */
+    blendRenderPrompt?: string;
 }
 export declare class HintUploadError extends Error {
     readonly code: string;

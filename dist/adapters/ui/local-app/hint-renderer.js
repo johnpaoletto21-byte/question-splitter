@@ -36,8 +36,12 @@ function baseStyles() {
     .info { background: #e3f2fd; border-color: #64b5f6; }
     label { display: block; margin: 1rem 0 0.35rem; font-weight: bold; }
     input[type="file"], input[type="text"] { font-family: monospace; font-size: 0.9rem; width: 100%; box-sizing: border-box; }
+    textarea { font-family: monospace; font-size: 0.85rem; width: 100%; box-sizing: border-box; padding: 0.5rem; border: 1px solid #ccc; }
     button { margin-top: 1rem; padding: 0.5rem 1.25rem; cursor: pointer; }
     button:disabled { cursor: not-allowed; opacity: 0.6; }
+    details.blend-config { margin: 1rem 0; border: 1px solid #ccc; padding: 0.5rem 0.8rem; background: #fafafa; }
+    details.blend-config > summary { cursor: pointer; font-weight: bold; }
+    details.blend-config .label-hint { font-weight: normal; color: #555; margin-left: 0.5rem; }
     .logs { border: 1px solid #ccc; padding: 0.75rem; background: #fafafa; white-space: pre-wrap; }
     .method-group { margin: 1rem 0; }
     .method-group label { display: inline; font-weight: normal; margin-left: 0.5rem; }
@@ -61,6 +65,43 @@ function baseStyles() {
       .comparison-4 { grid-template-columns: 1fr; }
     }
   `;
+}
+/**
+ * Renders the collapsed "Blend mode configuration" textarea block used on both
+ * the upload form and the blend results page (where it's paired with a retry
+ * button).
+ *
+ * The container intentionally has no <form> wrapper — the caller decides whether
+ * the inputs are submitted as part of an existing form (upload page) or wrapped
+ * in their own retry form (results page).
+ */
+function renderBlendConfigInputs(defaults, options = {}) {
+    const openAttr = options.open ? ' open' : '';
+    const disabledAttr = options.disabled ? ' disabled' : '';
+    return `<details class="blend-config" data-testid="blend-config-details"${openAttr}>
+    <summary>Blend mode configuration <span class="label-hint">(only used when method = Blend)</span></summary>
+
+    <label for="blendOverlayPrompt">Step 1 — Overlay prompt <span class="label-hint">(JSON annotation request)</span></label>
+    <textarea
+      id="blendOverlayPrompt"
+      name="blendOverlayPrompt"
+      rows="8"
+      data-testid="blend-config-overlay-prompt"${disabledAttr}>${esc(defaults.overlayPrompt)}</textarea>
+
+    <label for="blendOverlaySchema">Step 1 — Response schema <span class="label-hint">(JSON; passed as Gemini responseSchema)</span></label>
+    <textarea
+      id="blendOverlaySchema"
+      name="blendOverlaySchema"
+      rows="12"
+      data-testid="blend-config-overlay-schema"${disabledAttr}>${esc(defaults.overlaySchema)}</textarea>
+
+    <label for="blendRenderPrompt">Step 2 — Render prompt <span class="label-hint">(use {annotations_json} placeholder)</span></label>
+    <textarea
+      id="blendRenderPrompt"
+      name="blendRenderPrompt"
+      rows="8"
+      data-testid="blend-config-render-prompt"${disabledAttr}>${esc(defaults.renderPrompt)}</textarea>
+  </details>`;
 }
 function renderHintFormHtml(input) {
     const configBlock = input.configReady
@@ -109,6 +150,8 @@ function renderHintFormHtml(input) {
         <div class="method-desc">Two-step: JSON reasoning + image generation with specific instructions. Best-looking but slowest.</div>
       </div>
     </div>
+
+    ${renderBlendConfigInputs(input.blendDefaults, { disabled: !input.configReady })}
 
     <div class="notice warn">Maximum upload size: ${input.maxUploadMb} MB.</div>
 
@@ -164,7 +207,7 @@ function renderHintStatusHtml(record) {
 </body>
 </html>`;
 }
-function renderHintResultsHtml(record) {
+function renderHintResultsHtml(record, blendDefaults) {
     const result = record.result;
     if (!result) {
         return renderHintStatusHtml(record);
@@ -172,6 +215,19 @@ function renderHintResultsHtml(record) {
     const methodLabel = result.method === 'overlay' ? 'Canvas Overlay' :
         result.method === 'image-gen' ? 'Image Generation' :
             result.method === 'blend' ? 'Blend' : result.method;
+    const blendRetryBlock = result.method === 'blend' && blendDefaults
+        ? `
+  <h2>Retry with edited blend config</h2>
+  <p>Edit the prompts or response schema and re-run blend on the same source image. The schema must be valid JSON.</p>
+  <form method="POST" action="/hint-runs/${esc(record.id)}/retry" data-testid="hint-blend-retry-form">
+    ${renderBlendConfigInputs({
+            overlayPrompt: record.blendOverlayPrompt ?? blendDefaults.overlayPrompt,
+            overlaySchema: record.blendOverlaySchema ?? blendDefaults.overlaySchema,
+            renderPrompt: record.blendRenderPrompt ?? blendDefaults.renderPrompt,
+        }, { open: true })}
+    <button type="submit" data-testid="hint-blend-retry-button">Retry blend with these settings</button>
+  </form>`
+        : '';
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -208,6 +264,7 @@ function renderHintResultsHtml(record) {
   </div>
 
   <p style="margin-top: 1rem;"><a href="/hint-runs/${esc(record.id)}/result" download="annotated.png" data-testid="hint-download-link">Download annotated image</a></p>
+${blendRetryBlock}
 
   <h2>Logs</h2>
   <pre class="logs" data-testid="hint-run-logs">${esc(renderLogsBlock(record))}</pre>

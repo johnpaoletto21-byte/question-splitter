@@ -55,6 +55,11 @@ export interface RunHintPipelineInput {
   overlayPromptOverride?: string;
   /** Override the default blend render prompt. */
   blendRenderPromptOverride?: string;
+  /**
+   * Override the default JSON response schema used for blend step 1
+   * (overlay annotation call). Only honoured when method === 'blend'.
+   */
+  overlaySchemaOverride?: Record<string, unknown>;
   onLog?: (event: PipelineLogEvent) => void;
 }
 
@@ -71,6 +76,7 @@ export type OverlayFn = (
   sourceImagePath: string,
   promptText: string,
   config: GeminiHintOverlayConfig,
+  responseSchema?: Record<string, unknown>,
 ) => Promise<HintOverlayResult>;
 
 /** Canvas render function signature. */
@@ -165,6 +171,16 @@ export async function runHintPipeline(
     case 'blend': {
       emit(input.onLog, 'annotate', 'Method: Blend (JSON reasoning + image generation)');
 
+      if (input.overlayPromptOverride?.trim()) {
+        emit(input.onLog, 'annotate', 'Step 1: using custom overlay prompt');
+      }
+      if (input.overlaySchemaOverride) {
+        emit(input.onLog, 'annotate', 'Step 1: using custom response schema');
+      }
+      if (input.blendRenderPromptOverride?.trim()) {
+        emit(input.onLog, 'render', 'Step 2: using custom blend render prompt');
+      }
+
       // Step 1: Get structured annotations via JSON
       const overlayPrompt = appendHint(
         resolvePrompt(input.overlayPromptOverride, DEFAULT_HINT_OVERLAY_PROMPT),
@@ -172,7 +188,12 @@ export async function runHintPipeline(
       );
       emit(input.onLog, 'annotate', 'Step 1: Calling Gemini for annotation instructions (JSON)');
       const overlayFn = deps.overlay ?? getHintAnnotations;
-      const overlayResult = await overlayFn(input.sourceImagePath, overlayPrompt, apiConfig);
+      const overlayResult = await overlayFn(
+        input.sourceImagePath,
+        overlayPrompt,
+        apiConfig,
+        input.overlaySchemaOverride,
+      );
       emit(
         input.onLog,
         'annotate',

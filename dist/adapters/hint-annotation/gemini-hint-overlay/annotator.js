@@ -16,7 +16,7 @@ exports.unwrapGeminiOverlayResponse = unwrapGeminiOverlayResponse;
 exports.getHintAnnotations = getHintAnnotations;
 const fs_1 = require("fs");
 const schema_1 = require("./schema");
-exports.DEFAULT_HINT_OVERLAY_MODEL = 'gemini-2.5-flash-preview';
+exports.DEFAULT_HINT_OVERLAY_MODEL = 'gemini-3.1-flash-lite-preview';
 // ---------------------------------------------------------------------------
 // Default HTTP client
 // ---------------------------------------------------------------------------
@@ -124,14 +124,15 @@ function parseAnnotations(parsed) {
  * @param sourceImagePath  Absolute path to the source PNG.
  * @param promptText       Final prompt text (with hint already appended by caller).
  * @param config           Gemini API key and optional model name.
+ * @param responseSchema   Optional JSON schema override for Gemini's responseSchema constraint.
  * @param httpPost         Injectable HTTP client.
  * @param encodeFn         Injectable image encoder.
  */
-async function getHintAnnotations(sourceImagePath, promptText, config, httpPost = defaultHttpPost, encodeFn = encodeImageAsBase64) {
+async function getHintAnnotations(sourceImagePath, promptText, config, responseSchema, httpPost = defaultHttpPost, encodeFn = encodeImageAsBase64) {
     const model = config.model ?? exports.DEFAULT_HINT_OVERLAY_MODEL;
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent` +
         `?key=${config.apiKey}`;
-    const requestBody = buildGeminiHintOverlayRequest(promptText, sourceImagePath, encodeFn);
+    const requestBody = buildGeminiHintOverlayRequest(promptText, sourceImagePath, encodeFn, responseSchema ?? schema_1.GEMINI_HINT_OVERLAY_SCHEMA);
     const rawResponse = await httpPost(url, requestBody, {
         'Content-Type': 'application/json',
     });

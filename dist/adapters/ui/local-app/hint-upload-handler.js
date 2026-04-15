@@ -94,6 +94,9 @@ function parseHintUpload(req, outputDir) {
         let originalFileName = '';
         let hintText;
         let method = 'overlay'; // default
+        let blendOverlayPrompt;
+        let blendOverlaySchema;
+        let blendRenderPrompt;
         let writeDone;
         let settled = false;
         const cleanup = () => {
@@ -114,6 +117,15 @@ function parseHintUpload(req, outputDir) {
             }
             else if (fieldName === 'method' && VALID_METHODS.has(value)) {
                 method = value;
+            }
+            else if (fieldName === 'blendOverlayPrompt') {
+                blendOverlayPrompt = value.trim() || undefined;
+            }
+            else if (fieldName === 'blendOverlaySchema') {
+                blendOverlaySchema = value.trim() || undefined;
+            }
+            else if (fieldName === 'blendRenderPrompt') {
+                blendRenderPrompt = value.trim() || undefined;
             }
         });
         bb.on('file', (fieldName, file, info) => {
@@ -185,6 +197,9 @@ function parseHintUpload(req, outputDir) {
                     originalFileName,
                     hintText,
                     method,
+                    blendOverlayPrompt,
+                    blendOverlaySchema,
+                    blendRenderPrompt,
                 });
             })
                 .catch(fail);

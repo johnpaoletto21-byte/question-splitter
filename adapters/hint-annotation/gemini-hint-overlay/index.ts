@@ -5,6 +5,7 @@ export {
   encodeImageAsBase64,
   DEFAULT_HINT_OVERLAY_MODEL,
 } from './annotator';
+export { GEMINI_HINT_OVERLAY_SCHEMA } from './schema';
 export type {
   GeminiHintOverlayConfig,
   HttpPostFn,

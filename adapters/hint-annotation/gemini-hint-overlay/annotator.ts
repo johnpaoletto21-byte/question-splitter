@@ -155,6 +155,7 @@ function parseAnnotations(parsed: unknown): AnnotationInstruction[] {
  * @param sourceImagePath  Absolute path to the source PNG.
  * @param promptText       Final prompt text (with hint already appended by caller).
  * @param config           Gemini API key and optional model name.
+ * @param responseSchema   Optional JSON schema override for Gemini's responseSchema constraint.
  * @param httpPost         Injectable HTTP client.
  * @param encodeFn         Injectable image encoder.
  */
@@ -162,6 +163,7 @@ export async function getHintAnnotations(
   sourceImagePath: string,
   promptText: string,
   config: GeminiHintOverlayConfig,
+  responseSchema?: Record<string, unknown>,
   httpPost: HttpPostFn = defaultHttpPost,
   encodeFn: (path: string) => string = encodeImageAsBase64,
 ): Promise<HintOverlayResult> {
@@ -174,6 +176,7 @@ export async function getHintAnnotations(
     promptText,
     sourceImagePath,
     encodeFn,
+    responseSchema ?? GEMINI_HINT_OVERLAY_SCHEMA,
   );
   const rawResponse = await httpPost(url, requestBody, {
     'Content-Type': 'application/json',

@@ -83,6 +83,14 @@ export interface LocalHintRunRecord {
     result?: HintPipelineResult;
     allResults?: Partial<Record<HintAnnotationMethod, HintPipelineResult>>;
     error?: string;
+    /**
+     * Blend-mode override values actually submitted with the run, retained so the
+     * results page can pre-fill the retry form identically to what the user sent.
+     * Schema is stored as the raw JSON text the user typed.
+     */
+    blendOverlayPrompt?: string;
+    blendOverlaySchema?: string;
+    blendRenderPrompt?: string;
 }
 export declare function createHintRunRecord(input: {
     imageFileName?: string;
@@ -91,6 +99,9 @@ export declare function createHintRunRecord(input: {
     method?: HintAnnotationMethod;
     outputDir?: string;
     runOutputDir?: string;
+    blendOverlayPrompt?: string;
+    blendOverlaySchema?: string;
+    blendRenderPrompt?: string;
 }): LocalHintRunRecord;
 export declare function getHintRunRecord(id: string): LocalHintRunRecord | undefined;
 export declare function appendHintRunLog(id: string, stage: string, message: string, timestamp?: string): void;

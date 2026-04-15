@@ -23,6 +23,12 @@ export interface ParsedHintUpload {
   originalFileName: string;
   hintText?: string;
   method: HintAnnotationMethod;
+  /** Raw textarea value for the blend step-1 (overlay) prompt override. */
+  blendOverlayPrompt?: string;
+  /** Raw textarea value for the blend step-1 response schema (JSON text). */
+  blendOverlaySchema?: string;
+  /** Raw textarea value for the blend step-2 (render) prompt override. */
+  blendRenderPrompt?: string;
 }
 
 export class HintUploadError extends Error {
@@ -80,6 +86,9 @@ export function parseHintUpload(
     let originalFileName = '';
     let hintText: string | undefined;
     let method: HintAnnotationMethod = 'overlay'; // default
+    let blendOverlayPrompt: string | undefined;
+    let blendOverlaySchema: string | undefined;
+    let blendRenderPrompt: string | undefined;
     let writeDone: Promise<void> | undefined;
     let settled = false;
 
@@ -101,6 +110,12 @@ export function parseHintUpload(
         hintText = value.trim() || undefined;
       } else if (fieldName === 'method' && VALID_METHODS.has(value)) {
         method = value as HintAnnotationMethod;
+      } else if (fieldName === 'blendOverlayPrompt') {
+        blendOverlayPrompt = value.trim() || undefined;
+      } else if (fieldName === 'blendOverlaySchema') {
+        blendOverlaySchema = value.trim() || undefined;
+      } else if (fieldName === 'blendRenderPrompt') {
+        blendRenderPrompt = value.trim() || undefined;
       }
     });
 
@@ -190,6 +205,9 @@ export function parseHintUpload(
             originalFileName,
             hintText,
             method,
+            blendOverlayPrompt,
+            blendOverlaySchema,
+            blendRenderPrompt,
           });
         })
         .catch(fail);

@@ -239,6 +239,14 @@ export interface LocalHintRunRecord {
   result?: HintPipelineResult;
   allResults?: Partial<Record<HintAnnotationMethod, HintPipelineResult>>;
   error?: string;
+  /**
+   * Blend-mode override values actually submitted with the run, retained so the
+   * results page can pre-fill the retry form identically to what the user sent.
+   * Schema is stored as the raw JSON text the user typed.
+   */
+  blendOverlayPrompt?: string;
+  blendOverlaySchema?: string;
+  blendRenderPrompt?: string;
 }
 
 const hintRuns = new Map<string, LocalHintRunRecord>();
@@ -255,6 +263,9 @@ export function createHintRunRecord(input: {
   method?: HintAnnotationMethod;
   outputDir?: string;
   runOutputDir?: string;
+  blendOverlayPrompt?: string;
+  blendOverlaySchema?: string;
+  blendRenderPrompt?: string;
 }): LocalHintRunRecord {
   const timestamp = nowIso();
   const record: LocalHintRunRecord = {
@@ -269,6 +280,9 @@ export function createHintRunRecord(input: {
     createdAt: timestamp,
     updatedAt: timestamp,
     logs: [],
+    blendOverlayPrompt: input.blendOverlayPrompt,
+    blendOverlaySchema: input.blendOverlaySchema,
+    blendRenderPrompt: input.blendRenderPrompt,
   };
   hintRuns.set(record.id, record);
   return record;

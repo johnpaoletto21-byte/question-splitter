@@ -74,6 +74,7 @@ import {
   parseHintUpload,
   MAX_HINT_UPLOAD_BYTES,
 } from './hint-upload-handler';
+import { GEMINI_HINT_OVERLAY_SCHEMA } from '../../hint-annotation/gemini-hint-overlay';
 import {
   getPromptConfig,
   capturePromptSnapshot,
@@ -126,6 +127,20 @@ function readBody(req: http.IncomingMessage): Promise<string> {
     req.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
     req.on('error', reject);
   });
+}
+
+/** Returns the current session prompts + default schema as pretty JSON, used to pre-fill the blend config block. */
+function currentBlendDefaults(): {
+  overlayPrompt: string;
+  overlaySchema: string;
+  renderPrompt: string;
+} {
+  const cfg = getPromptConfig();
+  return {
+    overlayPrompt: cfg.hintOverlayPrompt,
+    overlaySchema: JSON.stringify(GEMINI_HINT_OVERLAY_SCHEMA, null, 2),
+    renderPrompt: cfg.hintBlendRenderPrompt,
+  };
 }
 
 function writeHtml(res: http.ServerResponse, statusCode: number, html: string): void {
@@ -722,6 +737,7 @@ function createPreviewServer(options: PreviewServerOptions = {}): http.Server {
           configReady: loaded.config !== undefined,
           missingKeys: loaded.missingKeys,
           maxUploadMb: MAX_HINT_UPLOAD_BYTES / (1024 * 1024),
+          blendDefaults: currentBlendDefaults(),
         }));
       } catch (err) {
         const message = formatUnknownError(err);
@@ -751,11 +767,31 @@ function createPreviewServer(options: PreviewServerOptions = {}): http.Server {
 
       parseHintUploadFn(req, config.OUTPUT_DIR)
         .then((upload) => {
+          // For blend mode, parse the optional schema override up front so we can
+          // surface a clean error before kicking off a run.
+          let overlaySchemaOverride: Record<string, unknown> | undefined;
+          if (upload.method === 'blend' && upload.blendOverlaySchema) {
+            try {
+              const parsed = JSON.parse(upload.blendOverlaySchema);
+              if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+                throw new Error('Schema must be a JSON object.');
+              }
+              overlaySchemaOverride = parsed as Record<string, unknown>;
+            } catch (err) {
+              writeHtml(res, 400, renderHintErrorHtml(
+                'Invalid Schema',
+                `Blend response schema is not valid JSON: ${formatUnknownError(err)}`,
+              ));
+              return;
+            }
+          }
+
           const runOutputDir = path.join(
             config.OUTPUT_DIR,
             'hint-runs',
             `hint_${Date.now()}`,
           );
+          const isBlend = upload.method === 'blend';
           const record = createHintRunRecord({
             imageFileName: upload.originalFileName,
             imageFilePath: upload.imageFilePath,
@@ -763,6 +799,9 @@ function createPreviewServer(options: PreviewServerOptions = {}): http.Server {
             method: upload.method,
             outputDir: config.OUTPUT_DIR,
             runOutputDir,
+            blendOverlayPrompt: isBlend ? upload.blendOverlayPrompt : undefined,
+            blendOverlaySchema: isBlend ? upload.blendOverlaySchema : undefined,
+            blendRenderPrompt: isBlend ? upload.blendRenderPrompt : undefined,
           });
           appendHintRunLog(
             record.id,
@@ -773,6 +812,15 @@ function createPreviewServer(options: PreviewServerOptions = {}): http.Server {
             appendHintRunLog(record.id, 'upload', `Hint: ${upload.hintText}`);
           }
           appendHintRunLog(record.id, 'upload', `Method: ${upload.method}`);
+          if (isBlend) {
+            const applied: string[] = [];
+            if (upload.blendOverlayPrompt) applied.push('overlay prompt');
+            if (overlaySchemaOverride) applied.push('overlay schema');
+            if (upload.blendRenderPrompt) applied.push('render prompt');
+            if (applied.length > 0) {
+              appendHintRunLog(record.id, 'upload', `Blend overrides applied: ${applied.join(', ')}`);
+            }
+          }
           if (upload.method === 'all') {
             startHintRunAll(
               record.id,
@@ -793,6 +841,13 @@ function createPreviewServer(options: PreviewServerOptions = {}): http.Server {
                 config,
                 method: upload.method,
                 hintText: upload.hintText,
+                ...(isBlend
+                  ? {
+                      overlayPromptOverride: upload.blendOverlayPrompt,
+                      blendRenderPromptOverride: upload.blendRenderPrompt,
+                      overlaySchemaOverride,
+                    }
+                  : {}),
               },
               runHintPipelineFn,
             );
@@ -874,10 +929,121 @@ function createPreviewServer(options: PreviewServerOptions = {}): http.Server {
       if (record.status === 'succeeded' && record.allResults) {
         writeHtml(res, 200, renderHintAllResultsHtml(record));
       } else if (record.status === 'succeeded' && record.result) {
-        writeHtml(res, 200, renderHintResultsHtml(record));
+        writeHtml(res, 200, renderHintResultsHtml(record, currentBlendDefaults()));
       } else {
         writeHtml(res, 200, renderHintStatusHtml(record));
       }
+      return;
+    }
+
+    // ── POST /hint-runs/:id/retry ───────────────────────────────────────
+    // Re-runs a blend hint with edited prompts/schema, reusing the original
+    // source PNG. Blend-only.
+    const hintRetryMatch = url.pathname.match(/^\/hint-runs\/([^/]+)\/retry$/);
+    if (req.method === 'POST' && hintRetryMatch) {
+      const original = getHintRunRecord(hintRetryMatch[1]);
+      if (!original) {
+        req.resume();
+        writeHtml(res, 404, renderHintErrorHtml('Run Not Found', `No hint run for ${hintRetryMatch[1]}`));
+        return;
+      }
+      if (original.method !== 'blend') {
+        req.resume();
+        writeHtml(res, 400, renderHintErrorHtml('Retry Not Supported', 'Retry is only available for blend-mode runs.'));
+        return;
+      }
+      if (!original.imageFilePath || !fs.existsSync(original.imageFilePath)) {
+        req.resume();
+        writeHtml(res, 400, renderHintErrorHtml('Source Missing', 'Original source image is no longer available on disk.'));
+        return;
+      }
+
+      let config: LocalConfig;
+      try {
+        config = loadConfigFn();
+      } catch (err) {
+        req.resume();
+        if (err instanceof ConfigMissingError) {
+          writeHtml(res, 400, renderHintErrorHtml('Config Missing', `Missing config: ${err.missingKeys.join(', ')}`));
+          return;
+        }
+        writeHtml(res, 500, renderHintErrorHtml('Config Error', formatUnknownError(err)));
+        return;
+      }
+
+      readBody(req)
+        .then((rawBody) => {
+          const params = new URLSearchParams(rawBody);
+          const overlayPrompt = params.get('blendOverlayPrompt')?.trim() || undefined;
+          const overlaySchemaText = params.get('blendOverlaySchema')?.trim() || undefined;
+          const renderPrompt = params.get('blendRenderPrompt')?.trim() || undefined;
+
+          let overlaySchemaOverride: Record<string, unknown> | undefined;
+          if (overlaySchemaText) {
+            try {
+              const parsed = JSON.parse(overlaySchemaText);
+              if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+                throw new Error('Schema must be a JSON object.');
+              }
+              overlaySchemaOverride = parsed as Record<string, unknown>;
+            } catch (err) {
+              writeHtml(res, 400, renderHintErrorHtml(
+                'Invalid Schema',
+                `Blend response schema is not valid JSON: ${formatUnknownError(err)}`,
+              ));
+              return;
+            }
+          }
+
+          const runOutputDir = path.join(
+            config.OUTPUT_DIR,
+            'hint-runs',
+            `hint_${Date.now()}`,
+          );
+          const record = createHintRunRecord({
+            imageFileName: original.imageFileName,
+            imageFilePath: original.imageFilePath,
+            hintText: original.hintText,
+            method: 'blend',
+            outputDir: config.OUTPUT_DIR,
+            runOutputDir,
+            blendOverlayPrompt: overlayPrompt,
+            blendOverlaySchema: overlaySchemaText,
+            blendRenderPrompt: renderPrompt,
+          });
+          appendHintRunLog(record.id, 'app', `Retry of ${original.id} with edited blend config`);
+          if (original.hintText) {
+            appendHintRunLog(record.id, 'upload', `Hint: ${original.hintText}`);
+          }
+          appendHintRunLog(record.id, 'upload', 'Method: blend');
+          const applied: string[] = [];
+          if (overlayPrompt) applied.push('overlay prompt');
+          if (overlaySchemaOverride) applied.push('overlay schema');
+          if (renderPrompt) applied.push('render prompt');
+          if (applied.length > 0) {
+            appendHintRunLog(record.id, 'upload', `Blend overrides applied: ${applied.join(', ')}`);
+          }
+
+          startHintRun(
+            record.id,
+            {
+              sourceImagePath: original.imageFilePath!,
+              outputDir: runOutputDir,
+              config,
+              method: 'blend',
+              hintText: original.hintText,
+              overlayPromptOverride: overlayPrompt,
+              blendRenderPromptOverride: renderPrompt,
+              overlaySchemaOverride,
+            },
+            runHintPipelineFn,
+          );
+
+          redirect(res, `/hint-runs/${record.id}`);
+        })
+        .catch((err: unknown) => {
+          writeHtml(res, 500, renderHintErrorHtml('Retry Error', formatUnknownError(err)));
+        });
       return;
     }
 
