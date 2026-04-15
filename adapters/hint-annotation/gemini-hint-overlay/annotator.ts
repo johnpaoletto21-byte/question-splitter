@@ -17,7 +17,7 @@ import type {
 } from './types';
 import { GEMINI_HINT_OVERLAY_SCHEMA } from './schema';
 
-export const DEFAULT_HINT_OVERLAY_MODEL = 'gemini-2.5-flash-preview';
+export const DEFAULT_HINT_OVERLAY_MODEL = 'gemini-3.1-flash-lite-preview';
 
 // ---------------------------------------------------------------------------
 // Default HTTP client

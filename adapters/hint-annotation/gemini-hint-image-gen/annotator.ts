@@ -107,18 +107,29 @@ export function unwrapGeminiImageResponse(raw: unknown): GeminiImagePart {
 
   const parts = content['parts'] as Record<string, unknown>[];
 
-  // Look for a part with inline_data containing an image
+  // Look for a part with inline image data. Gemini's REST v1beta response
+  // uses camelCase (`inlineData`, `mimeType`) even though the request body
+  // accepts snake_case (`inline_data`, `mime_type`). Check both so we match
+  // the real API response and any snake_case test fixtures.
   for (const part of parts) {
-    const inlineData = part['inline_data'] as Record<string, unknown> | undefined;
+    const inlineData =
+      (part['inlineData'] as Record<string, unknown> | undefined) ??
+      (part['inline_data'] as Record<string, unknown> | undefined);
+    if (!inlineData) continue;
+
+    const mimeType =
+      (inlineData['mimeType'] as string | undefined) ??
+      (inlineData['mime_type'] as string | undefined);
+    const data = inlineData['data'];
+
     if (
-      inlineData &&
-      typeof inlineData['mime_type'] === 'string' &&
-      (inlineData['mime_type'] as string).startsWith('image/') &&
-      typeof inlineData['data'] === 'string'
+      typeof mimeType === 'string' &&
+      mimeType.startsWith('image/') &&
+      typeof data === 'string'
     ) {
       return {
-        mimeType: inlineData['mime_type'] as string,
-        data: Buffer.from(inlineData['data'] as string, 'base64'),
+        mimeType,
+        data: Buffer.from(data, 'base64'),
       };
     }
   }
