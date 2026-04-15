@@ -13,7 +13,7 @@
 import type { LocalConfig } from '../config/local-config/types';
 import { type GeminiHintImageGenConfig, type HintImageGenResult } from '../hint-annotation/gemini-hint-image-gen';
 import { type GeminiHintOverlayConfig, type HintOverlayResult } from '../hint-annotation/gemini-hint-overlay';
-export type HintAnnotationMethod = 'image-gen' | 'overlay' | 'blend';
+export type HintAnnotationMethod = 'image-gen' | 'overlay' | 'blend' | 'all';
 export interface PipelineLogEvent {
     stage: string;
     message: string;

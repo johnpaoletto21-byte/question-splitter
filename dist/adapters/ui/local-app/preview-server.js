@@ -251,6 +251,43 @@ function startHintRun(recordId, input, runHintPipelineFn) {
         (0, run_state_1.markHintRunFailed)(recordId, message);
     });
 }
+function startHintRunAll(recordId, baseInput, runHintPipelineFn) {
+    (0, run_state_1.markHintRunStatus)(recordId, 'running');
+    (0, run_state_1.appendHintRunLog)(recordId, 'app', 'Running all three annotation methods in parallel');
+    const methods = ['overlay', 'image-gen', 'blend'];
+    const promises = methods.map((method) => {
+        const methodOutputDir = path.join(baseInput.outputDir, method);
+        return runHintPipelineFn({
+            ...baseInput,
+            method,
+            outputDir: methodOutputDir,
+            onLog: (event) => (0, run_state_1.appendHintRunLog)(recordId, `${method}/${event.stage}`, event.message, event.timestamp),
+        });
+    });
+    void Promise.allSettled(promises).then((results) => {
+        const allResults = {};
+        const errors = [];
+        methods.forEach((method, i) => {
+            const r = results[i];
+            if (r.status === 'fulfilled') {
+                allResults[method] = r.value;
+                (0, run_state_1.appendHintRunLog)(recordId, 'app', `${method}: completed`);
+            }
+            else {
+                const message = formatUnknownError(r.reason);
+                errors.push(`${method}: ${message}`);
+                (0, run_state_1.appendHintRunLog)(recordId, 'app', `${method}: failed — ${message}`);
+            }
+        });
+        if (Object.keys(allResults).length > 0) {
+            (0, run_state_1.appendHintRunLog)(recordId, 'app', `All methods finished. ${Object.keys(allResults).length}/3 succeeded.`);
+            (0, run_state_1.markHintRunAllSucceeded)(recordId, allResults);
+        }
+        else {
+            (0, run_state_1.markHintRunFailed)(recordId, `All methods failed: ${errors.join('; ')}`);
+        }
+    });
+}
 function createPreviewServer(options = {}) {
     const loadConfigFn = options.loadConfigFn ?? loader_1.loadConfig;
     const parsePdfUploadFn = options.parsePdfUploadFn ?? upload_handler_1.parsePdfUpload;
@@ -588,13 +625,23 @@ function createPreviewServer(options = {}) {
                     (0, run_state_1.appendHintRunLog)(record.id, 'upload', `Hint: ${upload.hintText}`);
                 }
                 (0, run_state_1.appendHintRunLog)(record.id, 'upload', `Method: ${upload.method}`);
-                startHintRun(record.id, {
-                    sourceImagePath: upload.imageFilePath,
-                    outputDir: runOutputDir,
-                    config,
-                    method: upload.method,
-                    hintText: upload.hintText,
-                }, runHintPipelineFn);
+                if (upload.method === 'all') {
+                    startHintRunAll(record.id, {
+                        sourceImagePath: upload.imageFilePath,
+                        outputDir: runOutputDir,
+                        config,
+                        hintText: upload.hintText,
+                    }, runHintPipelineFn);
+                }
+                else {
+                    startHintRun(record.id, {
+                        sourceImagePath: upload.imageFilePath,
+                        outputDir: runOutputDir,
+                        config,
+                        method: upload.method,
+                        hintText: upload.hintText,
+                    }, runHintPipelineFn);
+                }
                 redirect(res, `/hint-runs/${record.id}`);
             })
                 .catch((err) => {
@@ -604,6 +651,23 @@ function createPreviewServer(options = {}) {
                     : 400;
                 writeHtml(res, statusCode, (0, hint_renderer_1.renderHintErrorHtml)('Upload Error', message));
             });
+            return;
+        }
+        // ── GET /hint-runs/:id/result/:method ─────────────────────────────
+        const hintMethodResultMatch = url.pathname.match(/^\/hint-runs\/([^/]+)\/result\/(overlay|image-gen|blend)$/);
+        if (req.method === 'GET' && hintMethodResultMatch) {
+            const record = (0, run_state_1.getHintRunRecord)(hintMethodResultMatch[1]);
+            const method = hintMethodResultMatch[2];
+            const methodResult = record?.allResults?.[method];
+            if (!record ||
+                !methodResult?.annotatedImagePath ||
+                !record.runOutputDir ||
+                !isPathInsideDirectory(methodResult.annotatedImagePath, record.runOutputDir) ||
+                !fs.existsSync(methodResult.annotatedImagePath)) {
+                writeHtml(res, 404, (0, hint_renderer_1.renderHintErrorHtml)('Result Not Found', `No ${method} result for ${hintMethodResultMatch[1]}`));
+                return;
+            }
+            writePng(res, methodResult.annotatedImagePath);
             return;
         }
         // ── GET /hint-runs/:id/result ───────────────────────────────────────
@@ -642,7 +706,10 @@ function createPreviewServer(options = {}) {
                 writeHtml(res, 404, (0, hint_renderer_1.renderHintErrorHtml)('Run Not Found', `No hint run for ${hintRunMatch[1]}`));
                 return;
             }
-            if (record.status === 'succeeded' && record.result) {
+            if (record.status === 'succeeded' && record.allResults) {
+                writeHtml(res, 200, (0, hint_renderer_1.renderHintAllResultsHtml)(record));
+            }
+            else if (record.status === 'succeeded' && record.result) {
                 writeHtml(res, 200, (0, hint_renderer_1.renderHintResultsHtml)(record));
             }
             else {

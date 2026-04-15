@@ -23,6 +23,7 @@ exports.getHintRunRecord = getHintRunRecord;
 exports.appendHintRunLog = appendHintRunLog;
 exports.markHintRunStatus = markHintRunStatus;
 exports.markHintRunSucceeded = markHintRunSucceeded;
+exports.markHintRunAllSucceeded = markHintRunAllSucceeded;
 exports.markHintRunFailed = markHintRunFailed;
 const runs = new Map();
 function nowIso() {
@@ -200,6 +201,15 @@ function markHintRunSucceeded(id, result) {
     }
     record.status = 'succeeded';
     record.result = result;
+    record.updatedAt = nowIso();
+}
+function markHintRunAllSucceeded(id, allResults) {
+    const record = hintRuns.get(id);
+    if (!record) {
+        return;
+    }
+    record.status = 'succeeded';
+    record.allResults = allResults;
     record.updatedAt = nowIso();
 }
 function markHintRunFailed(id, error) {

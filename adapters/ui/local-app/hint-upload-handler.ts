@@ -16,7 +16,7 @@ const MAX_HINT_UPLOAD_BYTES = 25 * 1024 * 1024;
 /** PNG magic bytes: 89 50 4E 47 0D 0A 1A 0A. */
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
-const VALID_METHODS: ReadonlySet<string> = new Set(['image-gen', 'overlay', 'blend']);
+const VALID_METHODS: ReadonlySet<string> = new Set(['image-gen', 'overlay', 'blend', 'all']);
 
 export interface ParsedHintUpload {
   imageFilePath: string;
